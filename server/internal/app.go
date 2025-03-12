@@ -42,6 +42,7 @@ func NewLogger() log.Logger {
 
 func NewPromClient(c *conf.Bootstrap) *prom.Client {
 	timeout, err := time.ParseDuration(c.Prometheus.Timeout)
+	log.Info("timeout of prom client", timeout)
 	if err != nil {
 		panic(err)
 	}

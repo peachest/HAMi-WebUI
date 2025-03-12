@@ -44,6 +44,7 @@ func NewHTTPServer(c *conf.Bootstrap,
 	v1.RegisterMonitorHTTPServer(srv, monitor)
 	srv.HandlePrefix("/q/", openapiv2.NewHandler())
 	srv.HandleFunc("/metrics", func(w http.ResponseWriter, r *http.Request) {
+		log.Infof("metrics request: %s", r.URL.String())
 		exporter.GenerateMetrics(r.Context())
 		//mock.MockMetrics(r.Context())
 		promhttp.Handler().ServeHTTP(w, r)
