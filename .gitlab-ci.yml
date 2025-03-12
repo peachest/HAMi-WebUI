@@ -15,3 +15,5 @@ server_image_build:
     - docker buildx ls
     - make buildx-image
     - killdocker
+  tags:
+    - k8s
