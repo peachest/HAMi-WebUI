@@ -3,6 +3,37 @@ image: 172.16.1.99/aip/base/golang-gitlab-builder:1.23-ubuntu24.04
 stages:
   - build
 
+before_script:
+  - echo ${CI_COMMIT_REF_NAME}
+  - echo ${CI_MERGE_REQUEST_TARGET_BRANCH_NAME}
+    # docker alias
+  - shopt -s expand_aliases
+  - alias "killdocker=ps aux | grep docker | grep -v grep | awk '{print \$2}' | xargs kill -9 || true"
+  - alias "startdocker=(startdocker.sh &) ; sleep 10"
+
+  # - export GOPROXY=https://goproxy.cn/,https://goproxy.io/,https://mirrors.aliyun.com/goproxy,direct
+  # - export GOPROXY=https://goproxy.io/,https://mirrors.aliyun.com/goproxy,https://goproxy.cn/,direct
+  # - export GOPROXY=http://172.26.0.8:3000,https://goproxy.io/,https://mirrors.aliyun.com/goproxy,https://goproxy.cn/,direct
+  - export INNER_GOPROXY=${INNER_GOPROXY:-"http://172.16.251.11:1111"}
+  - export GOPROXY=https://goproxy.io/,https://mirrors.aliyun.com/goproxy,https://goproxy.cn/,direct
+  - |
+    if [[ "$DISABLE_INNER_GOPROXY" = "true" ]];then
+      echo "禁用公司内部GOPROXY"
+      export INNER_GOPROXY="";
+    else
+      if [ -n "$INNER_GOPROXY" ]; then
+        echo "使用公司内部GOPROXY：${INNER_GOPROXY}"
+        export GOPROXY="${INNER_GOPROXY},${GOPROXY}"
+      fi
+    fi
+    echo "最终GOPROXY=$GOPROXY"
+  - export GOSUMDB=off
+  - export GOMAXPROCS=10
+  # external cmd from envs
+  - echo "$BEFORE_SCRIPT_COMMAND"
+  - eval $BEFORE_SCRIPT_COMMAND
+
+
 server_image_build:
   stage: build
   script:
