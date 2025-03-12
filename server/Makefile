@@ -7,12 +7,12 @@ DIRS = $(shell ls $(CMD_PATH))
 # 1. Install Go dependencies
 .PHONY: install-deps
 install-deps:
-	go install github.com/google/wire/cmd/wire@latest
-	go install github.com/envoyproxy/protoc-gen-validate@latest
-	go install github.com/go-kratos/kratos/cmd/kratos/v2@latest
-	go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
-	go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
-	go install github.com/go-kratos/kratos/cmd/protoc-gen-go-http/v2@latest
+	GOPROXY=http://172.16.251.11:1111,https://goproxy.cn/,https://goproxy.io/,https://mirrors.aliyun.com/goproxy,direct go install github.com/google/wire/cmd/wire@latest
+	GOPROXY=http://172.16.251.11:1111,https://goproxy.cn/,https://goproxy.io/,https://mirrors.aliyun.com/goproxy,direct go install github.com/envoyproxy/protoc-gen-validate@latest
+	GOPROXY=http://172.16.251.11:1111,https://goproxy.cn/,https://goproxy.io/,https://mirrors.aliyun.com/goproxy,direct go install github.com/go-kratos/kratos/cmd/kratos/v2@latest
+	GOPROXY=http://172.16.251.11:1111,https://goproxy.cn/,https://goproxy.io/,https://mirrors.aliyun.com/goproxy,direct go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
+	GOPROXY=http://172.16.251.11:1111,https://goproxy.cn/,https://goproxy.io/,https://mirrors.aliyun.com/goproxy,direct go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
+	GOPROXY=http://172.16.251.11:1111,https://goproxy.cn/,https://goproxy.io/,https://mirrors.aliyun.com/goproxy,direct go install github.com/go-kratos/kratos/cmd/protoc-gen-go-http/v2@latest
 
 # 2. Generate proto and wire files
 .PHONY: generate
@@ -32,7 +32,7 @@ generate-wire: tidy-mod
 # 3. Clean Go modules
 .PHONY: tidy-mod
 tidy-mod:
-	go mod tidy
+	GOPROXY=http://172.16.251.11:1111,https://goproxy.cn/,https://goproxy.io/,https://mirrors.aliyun.com/goproxy,direct  go mod tidy
 
 # 4. Build-related commands
 .PHONY: build-linux
