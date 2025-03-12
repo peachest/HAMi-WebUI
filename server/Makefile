@@ -69,7 +69,7 @@ build-image:
 .PHONY: buildx-image
 buildx-image:
 	echo ${REF}
-	docker buildx build --platform linux/amd64,linux/arm64 --push -t ${DOCKER_IMAGE}:${REF} 。 
+	docker buildx build --platform linux/amd64,linux/arm64 --push -t ${DOCKER_IMAGE}:${REF} .
 .PHONY: push-image
 push-image:
 	docker push ${DOCKER_IMAGE}:${VERSION}
