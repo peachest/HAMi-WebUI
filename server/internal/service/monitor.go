@@ -2,13 +2,14 @@ package service
 
 import (
 	"context"
-	"github.com/jinzhu/copier"
-	v1 "github.com/prometheus/client_golang/api/prometheus/v1"
-	"github.com/prometheus/common/model"
 	"time"
 	pb "vgpu/api/v1"
 	"vgpu/internal/biz"
 	"vgpu/internal/data/prom"
+
+	"github.com/jinzhu/copier"
+	v1 "github.com/prometheus/client_golang/api/prometheus/v1"
+	"github.com/prometheus/common/model"
 )
 
 type MonitorService struct {

@@ -26,6 +26,8 @@ nameOverride: ""
 fullnameOverride: ""
 namespaceOverride: ""
 
+enableMetricsCache: true
+
 serviceAccount:
   # Specifies whether a service account should be created
   create: true

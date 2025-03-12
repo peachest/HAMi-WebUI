@@ -9,6 +9,7 @@ import (
 	"time"
 	pb "vgpu/api/v1"
 	"vgpu/internal/biz"
+	"vgpu/internal/conf"
 	"vgpu/internal/data/prom"
 	"vgpu/internal/provider/mlu"
 	"vgpu/internal/service"
@@ -27,6 +28,7 @@ type MetricsGenerator struct {
 	podUsecase     *biz.PodUseCase
 	monitorService *service.MonitorService
 	cacheTime      time.Time
+	enableCache    bool
 }
 
 // roundToTwoDecimal 将浮点数保留两位小数
@@ -40,6 +42,7 @@ func roundToOneDecimal(value float64) float64 {
 }
 
 func NewMetricsGenerator(
+	c *conf.Bootstrap,
 	promClient *prom.Client,
 	nodeUsecase *biz.NodeUsecase,
 	podUsecase *biz.PodUseCase,
@@ -50,6 +53,7 @@ func NewMetricsGenerator(
 		nodeUsecase:    nodeUsecase,
 		podUsecase:     podUsecase,
 		monitorService: monitorService,
+		enableCache:    c.EnableMetricsCache,
 	}
 }
 func (s *MetricsGenerator) generatorCache() time.Time {
@@ -58,16 +62,16 @@ func (s *MetricsGenerator) generatorCache() time.Time {
 }
 
 func (s *MetricsGenerator) cacheIsValidate() bool {
-	if s.cacheTime == s.generatorCache() {
+	if s.enableCache && s.cacheTime == s.generatorCache() {
 		return true
 	}
 	return false
 }
 
 func (s *MetricsGenerator) GenerateMetrics(ctx context.Context) error {
-	//if s.cacheIsValidate() {
-	//	return nil
-	//}
+	if s.cacheIsValidate() {
+		return nil
+	}
 	reset()                         // 重置所有指标缓存值
 	s.GenerateDeviceMetrics(ctx)    // 卡维度指标
 	s.GenerateContainerMetrics(ctx) // 任务维度指标
@@ -219,7 +223,7 @@ func (s *MetricsGenerator) GenerateContainerMetrics(ctx context.Context) error {
 }
 
 func (s *MetricsGenerator) queryInstantVal(ctx context.Context, query string) (float32, error) {
-	res, err := s.monitorService.QueryInstant(context.TODO(), &pb.QueryInstantRequest{
+	res, err := s.monitorService.QueryInstant(ctx, &pb.QueryInstantRequest{
 		Query: query,
 	})
 	if err != nil {
@@ -448,7 +452,7 @@ func (s *MetricsGenerator) queryDeviceAdditional(ctx context.Context, provider, 
 	default:
 		return nil, errors.New("provider not exists")
 	}
-	res, err := s.monitorService.QueryInstant(context.TODO(), &pb.QueryInstantRequest{
+	res, err := s.monitorService.QueryInstant(ctx, &pb.QueryInstantRequest{
 		Query: query,
 	})
 	if err != nil {

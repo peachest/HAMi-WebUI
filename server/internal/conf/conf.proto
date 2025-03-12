@@ -9,6 +9,7 @@ message Bootstrap {
   Server server = 1;
   Prometheus prometheus = 2;
   map<string, string> node_selectors = 3;
+  bool enable_metrics_cache = 4;
 }
 
 message Server {

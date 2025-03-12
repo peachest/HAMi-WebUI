@@ -13,3 +13,4 @@ node_selectors:
   DCU: dcu=on
   MLU: mlu=on
   NVIDIA: gpu=on
+enable_metrics_cache: true
