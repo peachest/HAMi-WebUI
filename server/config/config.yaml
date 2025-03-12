@@ -1,15 +1,15 @@
 server:
   http:
     addr: 0.0.0.0:8000
-    timeout: 1s
+    timeout: 600s
   grpc:
     addr: 0.0.0.0:9000
     timeout: 1s
 prometheus:
-  address: http://localhost:9090
+  address: http://llm207:31601
   timeout: 1m
 node_selectors:
-  NVIDIA: gpu=on
   Ascend: ascend=on
   DCU: dcu=on
   MLU: mlu=on
+  NVIDIA: gpu=on
