@@ -1,18 +1,28 @@
-DOCKER_IMAGE ?= projecthami/hami-webui-be
+BUILD_DATE := $(shell date "+%Y%m%d")
+BUILD_TIME := $(shell date "+%Y%m%dT%H%M%S")
+CI_COMMIT_SHA ?= 00000000
+CI_COMMIT_TAG ?= 0.0.0
+COMMIT_ID := $(shell echo ${CI_COMMIT_SHA} | cut -c-8)
+DOCKER_REPO_URL ?= 172.16.1.99
+
+
+DOCKER_IMAGE ?= ${DOCKER_REPO_URL}/aip/projecthami/hami-webui-be
 CMD_PATH ?= ./cmd/
 BUILD_PATH ?= ./build/
 VERSION ?= $(shell git describe --tags --always)
 DIRS = $(shell ls $(CMD_PATH))
 
+REF=$(if $(CI_COMMIT_REF_NAME),$(CI_COMMIT_REF_NAME),$(shell git rev-parse --abbrev-ref HEAD))
+
 # 1. Install Go dependencies
 .PHONY: install-deps
 install-deps:
-	GOPROXY=http://172.16.251.11:1111,https://goproxy.cn/,https://goproxy.io/,https://mirrors.aliyun.com/goproxy,direct go install github.com/google/wire/cmd/wire@latest
-	GOPROXY=http://172.16.251.11:1111,https://goproxy.cn/,https://goproxy.io/,https://mirrors.aliyun.com/goproxy,direct go install github.com/envoyproxy/protoc-gen-validate@latest
-	GOPROXY=http://172.16.251.11:1111,https://goproxy.cn/,https://goproxy.io/,https://mirrors.aliyun.com/goproxy,direct go install github.com/go-kratos/kratos/cmd/kratos/v2@latest
-	GOPROXY=http://172.16.251.11:1111,https://goproxy.cn/,https://goproxy.io/,https://mirrors.aliyun.com/goproxy,direct go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
-	GOPROXY=http://172.16.251.11:1111,https://goproxy.cn/,https://goproxy.io/,https://mirrors.aliyun.com/goproxy,direct go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
-	GOPROXY=http://172.16.251.11:1111,https://goproxy.cn/,https://goproxy.io/,https://mirrors.aliyun.com/goproxy,direct go install github.com/go-kratos/kratos/cmd/protoc-gen-go-http/v2@latest
+	go install github.com/google/wire/cmd/wire@latest
+	go install github.com/envoyproxy/protoc-gen-validate@latest
+	go install github.com/go-kratos/kratos/cmd/kratos/v2@latest
+	go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
+	go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
+	go install github.com/go-kratos/kratos/cmd/protoc-gen-go-http/v2@latest
 
 # 2. Generate proto and wire files
 .PHONY: generate
@@ -32,14 +42,14 @@ generate-wire: tidy-mod
 # 3. Clean Go modules
 .PHONY: tidy-mod
 tidy-mod:
-	GOPROXY=http://172.16.251.11:1111,https://goproxy.cn/,https://goproxy.io/,https://mirrors.aliyun.com/goproxy,direct  go mod tidy
+	 go mod tidy
 
 # 4. Build-related commands
 .PHONY: build-linux
 build-linux:
 	@ for dir in $(DIRS); \
 	do \
-		GO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o $(BUILD_PATH)$$dir ${CMD_PATH}$$dir; \
+		GO_ENABLED=1 GOOS=linux GOARCH=${ARCH} go build -o $(BUILD_PATH)$$dir ${CMD_PATH}$$dir; \
 		echo "Built $$dir for Linux"; \
 	done
 
@@ -56,6 +66,10 @@ build-local:
 build-image:
 	docker build --platform linux/amd64 -t ${DOCKER_IMAGE}:${VERSION} .
 
+.PHONY: buildx-image
+buildx-image:
+	echo ${REF}
+	docker buildx build --platform linux/amd64,linux/arm64 --push -t ${DOCKER_IMAGE}:${REF} 。 
 .PHONY: push-image
 push-image:
 	docker push ${DOCKER_IMAGE}:${VERSION}
