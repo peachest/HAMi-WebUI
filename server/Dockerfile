@@ -2,7 +2,7 @@ FROM --platform=${BUILDPLATFORM} 172.16.1.99/aip/base/golang-builder:1.23-ubuntu
 ARG TARGETARCH
 ARG ARCH=${TARGETARCH}
 
-ENV GOPROXY=http://172.16.251.11:1111,https://goproxy.io/,https://mirrors.aliyun.com/goproxy,direct
+ENV GOPROXY=http://172.16.251.11:1111,https://mirrors.aliyun.com/goproxy,https://goproxy.io/,direct
 
 # RUN sed -i 's/deb.debian.org/mirrors.ustc.edu.cn/g' /etc/apt/sources.list.d/debian.sources
 
