@@ -15,7 +15,7 @@ before_script:
   # - export GOPROXY=https://goproxy.io/,https://mirrors.aliyun.com/goproxy,https://goproxy.cn/,direct
   # - export GOPROXY=http://172.26.0.8:3000,https://goproxy.io/,https://mirrors.aliyun.com/goproxy,https://goproxy.cn/,direct
   - export INNER_GOPROXY=${INNER_GOPROXY:-"http://172.16.251.11:1111"}
-  - export GOPROXY=https://goproxy.io/,https://mirrors.aliyun.com/goproxy,https://goproxy.cn/,direct
+  - export GOPROXY=https://goproxy.io/,https://mirrors.aliyun.com/goproxy,direct
   - |
     if [[ "$DISABLE_INNER_GOPROXY" = "true" ]];then
       echo "禁用公司内部GOPROXY"
