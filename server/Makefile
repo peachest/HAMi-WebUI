@@ -6,7 +6,7 @@ COMMIT_ID := $(shell echo ${CI_COMMIT_SHA} | cut -c-8)
 DOCKER_REPO_URL ?= 172.16.1.99
 
 
-DOCKER_IMAGE ?= ${DOCKER_REPO_URL}/aip/projecthami/hami-webui-be
+DOCKER_IMAGE ?= ${DOCKER_REPO_URL}/aip/projecthami/hami-webui-be-oss
 CMD_PATH ?= ./cmd/
 BUILD_PATH ?= ./build/
 VERSION ?= $(shell git describe --tags --always)
