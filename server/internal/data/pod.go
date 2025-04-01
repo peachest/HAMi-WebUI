@@ -132,7 +132,15 @@ func (r *podRepo) fetchContainerInfo(pod *corev1.Pod) []*biz.Container {
 		}
 	}
 
+	if len(bizContainerDevices) != len(pod.Spec.Containers) {
+		r.log.Infof("len(bizContainerDevices) != len(pod.Spec.Containers), %d != %d", len(bizContainerDevices), len(pod.Spec.Containers))
+	}
+
 	for i, ctr := range pod.Spec.Containers {
+		if i + 1 >= len(bizContainerDevices) {
+			r.log.Infof("Container index out of range: %d >= %d", i, len(bizContainerDevices))
+			break
+		}
 		c := &biz.Container{
 			Name:             ctr.Name,
 			UUID:             ctrIdMaps[ctr.Name],

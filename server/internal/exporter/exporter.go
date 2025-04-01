@@ -112,6 +112,7 @@ func (s *MetricsGenerator) GenerateDeviceMetrics(ctx context.Context) error {
 		if err == nil && deviceMemSize > 0 {
 			HamiVMemoryScaling.WithLabelValues(device.NodeName, provider, device.Type, device.Id, driver, deviceNo).Set(roundToOneDecimal(float64(float32(device.Devmem) / deviceMemSize)))
 		}
+		// TODO refine
 		actualCoreUtil, err := s.deviceCoreUtil(ctx, provider, device.Id)
 		if err == nil {
 			HamiCoreUsed.WithLabelValues(device.NodeName, provider, device.Type, device.Id, driver, deviceNo).Set(float64(actualCoreUtil))
