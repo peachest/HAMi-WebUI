@@ -167,7 +167,7 @@ func (s *MetricsGenerator) GenerateContainerMetrics(ctx context.Context) error {
 			var vGPU int32 = 0
 			var core int32 = 0
 			var memory int32 = 0
-			var provider string = ""
+			var provider = device.Provider
 			for _, cd := range c.ContainerDevices {
 				if device.AliasId != "" && !strings.HasPrefix(cd.UUID, device.AliasId) {
 					continue
@@ -175,7 +175,6 @@ func (s *MetricsGenerator) GenerateContainerMetrics(ctx context.Context) error {
 				vGPU = vGPU + 1
 				core = core + cd.Usedcores
 				memory = memory + cd.Usedmem
-				provider = cd.Type
 			}
 			if provider == "" {
 				continue
