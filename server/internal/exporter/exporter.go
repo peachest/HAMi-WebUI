@@ -167,7 +167,7 @@ func (s *MetricsGenerator) GenerateContainerMetrics(ctx context.Context) error {
 			var vGPU int32 = 0
 			var core int32 = 0
 			var memory int32 = 0
-			var provider = device.Provider
+			var provider = ""
 			for _, cd := range c.ContainerDevices {
 				if device.AliasId != "" && !strings.HasPrefix(cd.UUID, device.AliasId) {
 					continue
@@ -175,6 +175,10 @@ func (s *MetricsGenerator) GenerateContainerMetrics(ctx context.Context) error {
 				vGPU = vGPU + 1
 				core = core + cd.Usedcores
 				memory = memory + cd.Usedmem
+				provider = cd.Type
+				if strings.HasPrefix(provider, biz.AscendGPUDevice) {
+					provider = biz.AscendGPUDevice
+				}
 			}
 			if provider == "" {
 				continue
@@ -212,6 +216,8 @@ func (s *MetricsGenerator) GenerateContainerMetrics(ctx context.Context) error {
 				switch provider {
 				case biz.CambriconGPUDevice:
 					taskMemoryUsed = float32((taskMemoryUsed/100)*float32(memory)) * 1024 * 1024
+				case biz.AscendGPUDevice:
+					taskMemoryUsed = float32(taskMemoryUsed) * 1024 * 1024
 				default:
 				}
 				HamiContainerMemoryUsed.WithLabelValues(device.NodeName, provider, device.Type, device.Id, c.PodName, c.Name, c.Namespace).Set(float64(taskMemoryUsed / 1024 / 1024))
@@ -343,7 +349,7 @@ func (s *MetricsGenerator) taskMemoryUsed(ctx context.Context, provider, namespa
 	case biz.CambriconGPUDevice:
 		query = fmt.Sprintf("avg(mlu_memory_utilization * on(uuid) group_right mlu_container{namespace=\"%s\",pod=\"%s\",container=\"%s\",type=\"mlu370.smlu.vmemory\"})", namespace, pod, container)
 	case biz.AscendGPUDevice:
-		query = fmt.Sprintf("avg(container_npu_utilization{exported_namespace=\"%s\", pod_name=\"%s\", container_name=\"%s\"})", namespace, pod, container)
+		query = fmt.Sprintf("avg(container_npu_used_memory{exported_namespace=\"%s\", pod_name=\"%s\", container_name=\"%s\"})", namespace, pod, container)
 	case biz.HygonGPUDevice:
 		query = fmt.Sprintf("avg(vdcu_usage_memory_size{pod_uuid=\"%s\", container_name=\"%s\"})", podUUID, container)
 	default:
