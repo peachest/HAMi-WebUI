@@ -7,6 +7,7 @@ import (
 	"math"
 	"strings"
 	"time"
+
 	pb "vgpu/api/v1"
 	"vgpu/internal/biz"
 	"vgpu/internal/conf"
@@ -42,11 +43,11 @@ func roundToOneDecimal(value float64) float64 {
 }
 
 func NewMetricsGenerator(
-	c *conf.Bootstrap,
-	promClient *prom.Client,
-	nodeUsecase *biz.NodeUsecase,
-	podUsecase *biz.PodUseCase,
-	monitorService *service.MonitorService,
+		c *conf.Bootstrap,
+		promClient *prom.Client,
+		nodeUsecase *biz.NodeUsecase,
+		podUsecase *biz.PodUseCase,
+		monitorService *service.MonitorService,
 ) *MetricsGenerator {
 	return &MetricsGenerator{
 		promClient:     promClient,
@@ -188,6 +189,7 @@ func (s *MetricsGenerator) GenerateContainerMetrics(ctx context.Context) error {
 			HamiContainerVcoreAllocated.WithLabelValues(device.NodeName, provider, device.Type, device.Id, c.PodName, c.Name, c.Namespace, fmt.Sprintf("%s:%s", c.Name, c.PodUID)).Set(float64(core))
 			// 查询任务在当前设备下的算力利用率
 			taskCoreUsed, err := s.taskCoreUsed(ctx, provider, c.Namespace, c.PodName, c.Name, c.PodUID, device.Id)
+			fmt.Printf("GenerateContainerMetrics taskCoreUsed=%.2f, core=%d", taskCoreUsed, core)
 			if err == nil {
 				used := float64(0)
 				util := float64(0)
@@ -198,7 +200,7 @@ func (s *MetricsGenerator) GenerateContainerMetrics(ctx context.Context) error {
 				case biz.CambriconGPUDevice:
 					used = float64(taskCoreUsed) / 100 * float64(core)
 					util = float64(taskCoreUsed)
-				case biz.HygonGPUDevice:
+				case biz.HygonGPUDevice, biz.AscendGPUDevice:
 					used = float64(taskCoreUsed)
 					util = roundToOneDecimal(100 * float64(taskCoreUsed) / float64(core))
 				default:
@@ -300,9 +302,9 @@ func (s *MetricsGenerator) deviceCoreUtil(ctx context.Context, provider, deviceU
 	query := ""
 	switch provider {
 	case biz.NvidiaGPUDevice:
-		//query = fmt.Sprintf("avg(avg_over_time(DCGM_FI_DEV_GPU_UTIL{UUID=\"%s\"}[1m]))", deviceUUID)
+		// query = fmt.Sprintf("avg(avg_over_time(DCGM_FI_DEV_GPU_UTIL{UUID=\"%s\"}[1m]))", deviceUUID)
 		query = fmt.Sprintf("DCGM_FI_DEV_GPU_UTIL{UUID=\"%s\"}", deviceUUID)
-		//query = fmt.Sprintf("(%s * (sum_over_time(%s[5m:]) / count_over_time(( %s !=0)[5m:])) / %s) > 0 or %s", queryTemplate, queryTemplate, queryTemplate, queryTemplate, queryTemplate)
+		// query = fmt.Sprintf("(%s * (sum_over_time(%s[5m:]) / count_over_time(( %s !=0)[5m:])) / %s) > 0 or %s", queryTemplate, queryTemplate, queryTemplate, queryTemplate, queryTemplate)
 	case biz.CambriconGPUDevice:
 		query = fmt.Sprintf("avg(mlu_utilization{uuid=\"%s\"})", deviceUUID)
 	case biz.AscendGPUDevice:
@@ -320,14 +322,14 @@ func (s *MetricsGenerator) taskCoreUsed(ctx context.Context, provider, namespace
 	query := ""
 	switch provider {
 	case biz.NvidiaGPUDevice:
-		//query = fmt.Sprintf("avg(Device_utilization_desc_of_container{deviceuuid=\"%s\", podnamespace=\"%s\", podname=\"%s\", ctrname=\"%s\"})", deviceUUID, namespace, pod, container)
+		// query = fmt.Sprintf("avg(Device_utilization_desc_of_container{deviceuuid=\"%s\", podnamespace=\"%s\", podname=\"%s\", ctrname=\"%s\"})", deviceUUID, namespace, pod, container)
 		//		queryTemplate := `last_over_time((Device_utilization_desc_of_container{deviceuuid="%s", podnamespace="%s", podname="%s", ctrname="%s"} != 0)[1m:])
-		//or
-		//last_over_time(Device_utilization_desc_of_container{deviceuuid="%s", podnamespace="%s", podname="%s", ctrname="%s"}[1m:])`
+		// or
+		// last_over_time(Device_utilization_desc_of_container{deviceuuid="%s", podnamespace="%s", podname="%s", ctrname="%s"}[1m:])`
 		//		query = fmt.Sprintf(queryTemplate, deviceUUID, namespace, pod, container, deviceUUID, namespace, pod, container)
 		queryTemplate := fmt.Sprintf("Device_utilization_desc_of_container{deviceuuid=\"%s\", podnamespace=\"%s\", podname=\"%s\", ctrname=\"%s\"}", deviceUUID, namespace, pod, container)
 		query = fmt.Sprintf("sum_over_time(%s[1m]) == 0 or (sum_over_time(%s[10m:]) / count_over_time(( %s !=0)[10m:])) ", queryTemplate, queryTemplate, queryTemplate)
-		//query = queryTemplate
+		// query = queryTemplate
 	case biz.CambriconGPUDevice:
 		query = fmt.Sprintf("avg(mlu_utilization * on(uuid) group_right mlu_container{namespace=\"%s\",pod=\"%s\",container=\"%s\",type=\"mlu370.smlu.vcore\"})", namespace, pod, container)
 	case biz.AscendGPUDevice:
