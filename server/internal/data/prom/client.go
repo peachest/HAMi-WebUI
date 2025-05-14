@@ -23,7 +23,8 @@ type Client struct {
 }
 
 type CustomTransport struct {
-	auth string
+	auth      string
+	enableLog bool
 	http.RoundTripper
 }
 
@@ -50,11 +51,17 @@ func (c *CustomTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	}()
 
 	req.Header.Set("Authorization", c.auth)
+	if !c.enableLog {
+		return c.RoundTripper.RoundTrip(req)
+	}
 
-	// 读取请求体
 	var requestBody []byte
+	var responseBody []byte
+	var log RequestLog
+
+	// 只有在需要记录日志时才读取请求体和响应体
+	// 读取请求体
 	if req.Body != nil {
-		var err error
 		requestBody, err = ioutil.ReadAll(req.Body)
 		if err != nil {
 			return nil, err
@@ -70,17 +77,17 @@ func (c *CustomTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	}
 	defer resp.Body.Close()
 
+	// 计算耗时
+	duration := time.Since(start) / time.Millisecond
+
 	// 读取响应体
-	responseBody, err := ioutil.ReadAll(resp.Body)
+	responseBody, err = ioutil.ReadAll(resp.Body)
 	if err != nil {
 		return nil, err
 	}
 
-	// 计算耗时
-	duration := time.Since(start) / time.Millisecond
-
 	// 创建请求日志
-	log := RequestLog{
+	log = RequestLog{
 		Timestamp:      start.UnixNano() / int64(time.Millisecond),
 		Method:         req.Method,
 		URL:            req.URL.String(),
@@ -103,7 +110,6 @@ func (c *CustomTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	if err != nil {
 		return nil, err
 	}
-
 	if _, err := file.Write(append(logLine, '\n')); err != nil {
 		return nil, err
 	}
@@ -152,10 +158,12 @@ func (c *CustomTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 // }
 
 func NewClient(address string, timeout time.Duration, auth string) (*Client, error) {
+	enableLog := os.Getenv("ENABLE_PROM_LOG_FILE") == "1"
 	client, err := api.NewClient(api.Config{
 		Address: address,
 		RoundTripper: &CustomTransport{
-			auth: auth,
+			auth:      auth,
+			enableLog: enableLog,
 			RoundTripper: &http.Transport{
 				TLSClientConfig: &tls.Config{
 					InsecureSkipVerify: true, // 忽略 SSL 证书验证
