@@ -137,7 +137,7 @@ func (r *podRepo) fetchContainerInfo(pod *corev1.Pod) []*biz.Container {
 	}
 
 	for i, ctr := range pod.Spec.Containers {
-		if i + 1 >= len(bizContainerDevices) {
+		if i + 1 > len(bizContainerDevices) {
 			r.log.Infof("Container index out of range: %d >= %d", i, len(bizContainerDevices))
 			break
 		}
