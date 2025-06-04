@@ -3,14 +3,13 @@ package ascend
 import (
 	"context"
 	"fmt"
-	"strings"
-	"vgpu/internal/data/prom"
-	"vgpu/internal/provider/util"
-
 	"github.com/go-kratos/kratos/v2/log"
 	"github.com/prometheus/common/model"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/labels"
+	"strconv"
+	"vgpu/internal/data/prom"
+	"vgpu/internal/provider/util"
 )
 
 type Ascend struct {
@@ -85,12 +84,7 @@ func (a *Ascend) FetchDevices(node *corev1.Node) ([]*util.DeviceInfo, error) {
 		}
 		for i, nodedevice := range nodeDevices {
 			nodeDevices[i].AliasId = nodedevice.ID
-			sp := strings.Split(nodedevice.ID, "-") // ID is like "Ascend910B-2", {card_type}-{card_id}
-			if len(sp) != 2 {
-				log.Infof("ID %s of ascend device is not expected", nodedevice.ID)
-				continue
-			}
-			if device, exists := tmpDevice[sp[1]]; exists {
+			if device, exists := tmpDevice[strconv.Itoa(i)]; exists {
 				nodeDevices[i].ID = device.ID
 			} else {
 				log.Infof("Key %d not found in tmpDevice", i)
