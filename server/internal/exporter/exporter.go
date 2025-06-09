@@ -186,6 +186,15 @@ func (s *MetricsGenerator) GenerateContainerMetrics(ctx context.Context) error {
 			}
 			HamiContainerVgpuAllocated.WithLabelValues(device.NodeName, provider, device.Type, device.Id, c.PodName, c.Name, c.Namespace, fmt.Sprintf("%s:%s", c.Name, c.PodUID)).Set(float64(vGPU))
 			HamiContainerVmemoryAllocated.WithLabelValues(device.NodeName, provider, device.Type, device.Id, c.PodName, c.Name, c.Namespace, fmt.Sprintf("%s:%s", c.Name, c.PodUID)).Set(float64(memory))
+
+			// fix metric value of Ascend GPU device core allocation, refer to AIP-108392
+			if provider == biz.AscendGPUDevice {
+				deviceMemSize, err := s.deviceMemTotal(ctx, provider, device.Id)
+				if err == nil && deviceMemSize > 0 {
+					perc := float32(memory) / deviceMemSize
+					core = int32(float32(100) * perc)
+				}
+			}
 			HamiContainerVcoreAllocated.WithLabelValues(device.NodeName, provider, device.Type, device.Id, c.PodName, c.Name, c.Namespace, fmt.Sprintf("%s:%s", c.Name, c.PodUID)).Set(float64(core))
 			// 查询任务在当前设备下的算力利用率
 			taskCoreUsed, err := s.taskCoreUsed(ctx, provider, c.Namespace, c.PodName, c.Name, c.PodUID, device.Id)
