@@ -4,10 +4,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/go-kratos/kratos/v2/log"
-	corev1 "k8s.io/api/core/v1"
 	"strconv"
 	"strings"
+
+	"github.com/go-kratos/kratos/v2/log"
+	corev1 "k8s.io/api/core/v1"
 )
 
 const (
@@ -164,6 +165,10 @@ func DecodeDCUContainerDevices(str, priority, nodeName string) (ContainerDevices
 				return ContainerDevices{}, fmt.Errorf("pod annotation format error; information missing, please do not use nodeName field in task")
 			}
 			cardIdx := strings.Split(tmpstr[0], "-")
+			if len(cardIdx) < 2 {
+				log.Log(log.LevelWarn, "DecodeDCUContainerDevices: length of cardIdx is less than 2, skipping device")
+				continue
+			}
 			tmpdev.Idx = i
 			tmpdev.UUID = fmt.Sprintf("%s-dcu-%s", nodeName, cardIdx[1])
 			tmpdev.Type = tmpstr[1]
