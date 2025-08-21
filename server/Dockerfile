@@ -1,4 +1,4 @@
-FROM --platform=${BUILDPLATFORM} 172.16.1.99/aip/base/golang-builder:1.23-ubuntu24.04 AS builder
+FROM --platform=${BUILDPLATFORM} harbor.transwarp.io/aip/base/golang-builder:1.23-ubuntu24.04 AS builder
 ARG TARGETARCH
 ARG ARCH=${TARGETARCH}
 
@@ -16,7 +16,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends protobuf-compil
 
 RUN make build
 
-FROM 172.16.1.99/aip/base/alpine-runner:3.19
+FROM harbor.transwarp.io/aip/base/alpine-runner:3.19
 ARG TARGETARCH
 
 ARG ARCH=${TARGETARCH}
