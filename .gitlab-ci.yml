@@ -1,4 +1,4 @@
-image: 172.16.1.99/aip/base/golang-gitlab-builder:1.23-ubuntu24.04
+image: harbor.transwarp.io/aip/base/golang-gitlab-builder:1.23-ubuntu24.04
 
 stages:
   - build
@@ -39,9 +39,9 @@ server_image_build:
   script:
     - cd server
     - startdocker
-    - docker run --rm --privileged 172.16.1.99/gold/tonistiigi/binfmt:latest --install all
+    - docker run --rm --privileged harbor.transwarp.io/gold/tonistiigi/binfmt:latest --install all
     - export builder=cibuilder
-    - docker buildx create --name $builder --driver-opt image=172.16.1.99/gold/moby/buildkit:buildx-stable-1 --platform "linux/amd64,linux/arm64/v8" --use --driver docker-container --config /buildkitd.toml
+    - docker buildx create --name $builder --driver-opt image=harbor.transwarp.io/gold/moby/buildkit:buildx-stable-1 --platform "linux/amd64,linux/arm64/v8" --use --driver docker-container --config /buildkitd.toml
     - docker buildx inspect --bootstrap $builder
     - docker buildx ls
     - make buildx-image

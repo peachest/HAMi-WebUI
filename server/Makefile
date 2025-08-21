@@ -3,7 +3,7 @@ BUILD_TIME := $(shell date "+%Y%m%dT%H%M%S")
 CI_COMMIT_SHA ?= 00000000
 CI_COMMIT_TAG ?= 0.0.0
 COMMIT_ID := $(shell echo ${CI_COMMIT_SHA} | cut -c-8)
-DOCKER_REPO_URL ?= 172.16.1.99
+DOCKER_REPO_URL ?= harbor.transwarp.io
 
 
 DOCKER_IMAGE ?= ${DOCKER_REPO_URL}/aip/projecthami/hami-webui-be-oss
