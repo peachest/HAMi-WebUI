@@ -1,4 +1,4 @@
-FROM --platform=${BUILDPLATFORM} harbor.transwarp.io/aip/base/golang-builder:1.24-ubuntu24.04 AS builder
+FROM --platform=${BUILDPLATFORM} harbor.transwarp.io/aip/base/golang-builder:1.25-ubuntu24.04 AS builder
 ARG TARGETARCH
 ARG ARCH=${TARGETARCH}
 
