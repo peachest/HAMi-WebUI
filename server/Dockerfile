@@ -14,7 +14,8 @@ COPY . .
 
 RUN apt-get update && apt-get install -y --no-install-recommends protobuf-compiler
 
-RUN make build
+
+RUN PATH=/root/go/bin:$PATH make build
 
 FROM harbor.transwarp.io/aip/base/alpine-runner:3.19
 ARG TARGETARCH

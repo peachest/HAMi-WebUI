@@ -1,4 +1,3 @@
-PATH := $(HOME)/go/bin:$(PATH)
 BUILD_DATE := $(shell date "+%Y%m%d")
 BUILD_TIME := $(shell date "+%Y%m%dT%H%M%S")
 CI_COMMIT_SHA ?= 00000000
