@@ -43,11 +43,11 @@ func roundToOneDecimal(value float64) float64 {
 }
 
 func NewMetricsGenerator(
-		c *conf.Bootstrap,
-		promClient *prom.Client,
-		nodeUsecase *biz.NodeUsecase,
-		podUsecase *biz.PodUseCase,
-		monitorService *service.MonitorService,
+	c *conf.Bootstrap,
+	promClient *prom.Client,
+	nodeUsecase *biz.NodeUsecase,
+	podUsecase *biz.PodUseCase,
+	monitorService *service.MonitorService,
 ) *MetricsGenerator {
 	return &MetricsGenerator{
 		promClient:     promClient,
@@ -344,7 +344,15 @@ func (s *MetricsGenerator) taskCoreUsed(ctx context.Context, provider, namespace
 	case biz.AscendGPUDevice:
 		query = fmt.Sprintf("avg(container_npu_utilization{exported_namespace=\"%s\", pod_name=\"%s\", container_name=\"%s\"})", namespace, pod, container)
 	case biz.HygonGPUDevice:
-		query = fmt.Sprintf("avg(vdcu_percent{pod_uuid=\"%s\", container_name=\"%s\"})", podUUID, container)
+		// vdcu
+		query = fmt.Sprintf("avg(vdcu_utilizationrate{dcu_pod_name=\"%s\", container=\"%s\"})", pod, container)
+		if v, err := s.queryInstantVal(ctx, query); err == nil && v > 0 {
+			return v, nil
+		} else if err != nil {
+			return 0, err
+		}
+		// dcu
+		query = fmt.Sprintf("avg(dcu_utilizationrate{dcu_pod_name=\"%s\", container=\"%s\"})", pod, container)
 	default:
 		return 0, errors.New("provider not exists")
 	}
@@ -362,7 +370,15 @@ func (s *MetricsGenerator) taskMemoryUsed(ctx context.Context, provider, namespa
 	case biz.AscendGPUDevice:
 		query = fmt.Sprintf("avg(container_npu_used_memory{exported_namespace=\"%s\", pod_name=\"%s\", container_name=\"%s\"})", namespace, pod, container)
 	case biz.HygonGPUDevice:
-		query = fmt.Sprintf("avg(vdcu_usage_memory_size{pod_uuid=\"%s\", container_name=\"%s\"})", podUUID, container)
+		// vdcu
+		query = fmt.Sprintf("avg(vdcu_usedmemory_bytes{dcu_pod_name=\"%s\", container=\"%s\"})", pod, container)
+		if v, err := s.queryInstantVal(ctx, query); err == nil && v > 0 {
+			return v, nil
+		} else if err != nil {
+			return 0, err
+		}
+		// dcu
+		query = fmt.Sprintf("avg(dcu_usedmemory_bytes{dcu_pod_name=\"%s\", container=\"%s\"})", pod, container)
 	default:
 		return 0, errors.New("provider not exists")
 	}
