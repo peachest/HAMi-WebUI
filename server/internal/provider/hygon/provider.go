@@ -4,14 +4,15 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/go-kratos/kratos/v2/log"
-	"github.com/prometheus/common/model"
-	corev1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/labels"
 	"strconv"
 	"strings"
 	"vgpu/internal/data/prom"
 	"vgpu/internal/provider/util"
+
+	"github.com/go-kratos/kratos/v2/log"
+	"github.com/prometheus/common/model"
+	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/labels"
 )
 
 type Hygon struct {
@@ -62,8 +63,9 @@ func (h *Hygon) GetDevicesFromPrometheus(node *corev1.Node) map[string]*util.Dev
 	for _, sample := range vector {
 		minorNumber := string(sample.Metric["minor_number"])
 		index, _ := strconv.Atoi(minorNumber)
-		deviceMap[minorNumber] = &util.DeviceInfo{
-			ID:    string(sample.Metric["device_id"]),
+		id := string(sample.Metric["device_id"])
+		deviceMap[id] = &util.DeviceInfo{
+			ID:    id,
 			Index: uint(index),
 		}
 	}
@@ -103,7 +105,7 @@ func (h *Hygon) FetchDevices(node *corev1.Node) ([]*util.DeviceInfo, error) {
 		}
 
 		nodedevice.ID = devInfo.ID
-		nodedevice.AliasId = fmt.Sprintf("%s-dcu-%d", node.Name, devInfo.Index)
+		nodedevice.AliasId = fmt.Sprintf("%s-dcu-%s", node.Name, devInfo.ID)
 	}
 	return nodedevices, nil
 }

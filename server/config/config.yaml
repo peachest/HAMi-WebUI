@@ -6,7 +6,7 @@ server:
     addr: 0.0.0.0:9000
     timeout: 20s
 prometheus:
-  address: http://172.17.120.207:32259
+  address: http://172.17.120.11:31601
   timeout: 1m
 node_selectors:
   Ascend: ascend=on
