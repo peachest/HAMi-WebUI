@@ -233,7 +233,7 @@ func (s *MetricsGenerator) GenerateContainerMetrics(ctx context.Context) error {
 				case biz.AscendGPUDevice:
 					taskMemoryUsed = float32(taskMemoryUsed) * 1024 * 1024
 				case biz.MetaxGPUDevice:
-					taskMemoryUsed = float32(taskMemoryUsed) * 1024 * 1024
+					taskMemoryUsed = float32(taskMemoryUsed) * 1024
 				default:
 				}
 				HamiContainerMemoryUsed.WithLabelValues(device.NodeName, provider, device.Type, device.Id, c.PodName, c.Name, c.Namespace).Set(float64(taskMemoryUsed / 1024 / 1024))
