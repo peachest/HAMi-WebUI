@@ -3,7 +3,7 @@ package metax
 import "vgpu/internal/provider/util"
 
 const (
-	RegisterAnnos       = "hami.io/node-dcu-register"
+	RegisterAnnos       = "metax-tech.com/node-gpu-devices"
 	MetaxSGPUDevice     = "Metax-SGPU"
 	MetaxSGPUCommonWord = "Metax-SGPU"
 )
