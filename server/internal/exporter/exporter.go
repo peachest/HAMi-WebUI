@@ -353,6 +353,16 @@ func (s *MetricsGenerator) taskCoreUsed(ctx context.Context, provider, namespace
 		}
 		// dcu
 		query = fmt.Sprintf("avg(dcu_utilizationrate{dcu_pod_name=\"%s\", container=\"%s\"})", pod, container)
+	case biz.MetaxGPUDevice:
+		// sgpu
+		query = fmt.Sprintf("avg(mx_sgpu_usage{exported_pod=\"%s\", exported_container=\"%s\", exported_namespace=\"%s\"})", pod, container, namespace)
+		if v, err := s.queryInstantVal(ctx, query); err == nil && v > 0 {
+			return v, nil
+		} else if err != nil {
+			return 0, err
+		}
+		// gpu
+		query = fmt.Sprintf("avg(mx_gpu_usage{exported_pod=\"%s\", exported_container=\"%s\", exported_namespace=\"%s\"})", pod, container, namespace)
 	default:
 		return 0, errors.New("provider not exists")
 	}
@@ -379,6 +389,16 @@ func (s *MetricsGenerator) taskMemoryUsed(ctx context.Context, provider, namespa
 		}
 		// dcu
 		query = fmt.Sprintf("avg(dcu_usedmemory_bytes{dcu_pod_name=\"%s\", container=\"%s\"})", pod, container)
+	case biz.MetaxGPUDevice:
+		// sgpu
+		query = fmt.Sprintf("avg(mx_sgpu_used_memory{exported_pod=\"%s\", exported_container=\"%s\", exported_namespace=\"%s\"})", pod, container, namespace)
+		if v, err := s.queryInstantVal(ctx, query); err == nil && v > 0 {
+			return v, nil
+		} else if err != nil {
+			return 0, err
+		}
+		// gpu
+		query = fmt.Sprintf("avg(mx_memory_usage{exported_pod=\"%s\", exported_container=\"%s\", exported_namespace=\"%s\",  type=\"vram\"})", pod, container, namespace)
 	default:
 		return 0, errors.New("provider not exists")
 	}

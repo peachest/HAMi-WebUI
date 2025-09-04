@@ -17,6 +17,7 @@ const (
 	AscendGPUDevice = "Ascend"
 
 	CambriconGPUDevice = "MLU"
+	MetaxGPUDevice     = "Metax-SGPU"
 
 	ContainerStatusSuccess = "success"
 	ContainerStatusFailed  = "failed"
