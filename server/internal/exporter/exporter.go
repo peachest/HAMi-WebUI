@@ -212,6 +212,9 @@ func (s *MetricsGenerator) GenerateContainerMetrics(ctx context.Context) error {
 				case biz.HygonGPUDevice, biz.AscendGPUDevice:
 					used = float64(taskCoreUsed)
 					util = roundToOneDecimal(100 * float64(taskCoreUsed) / float64(core))
+				case biz.MetaxGPUDevice:
+					used = float64(taskCoreUsed)
+					util = roundToOneDecimal(100 * float64(taskCoreUsed) / float64(core))
 				default:
 				}
 				cardCoreUtil, err := s.deviceCoreUtil(ctx, provider, device.Id)
@@ -228,6 +231,8 @@ func (s *MetricsGenerator) GenerateContainerMetrics(ctx context.Context) error {
 				case biz.CambriconGPUDevice:
 					taskMemoryUsed = float32((taskMemoryUsed/100)*float32(memory)) * 1024 * 1024
 				case biz.AscendGPUDevice:
+					taskMemoryUsed = float32(taskMemoryUsed) * 1024 * 1024
+				case biz.MetaxGPUDevice:
 					taskMemoryUsed = float32(taskMemoryUsed) * 1024 * 1024
 				default:
 				}
