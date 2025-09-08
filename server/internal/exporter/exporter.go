@@ -403,7 +403,7 @@ func (s *MetricsGenerator) taskMemoryUsed(ctx context.Context, provider, namespa
 			return 0, err
 		}
 		// gpu
-		query = fmt.Sprintf("avg(mx_memory_usage{exported_pod=\"%s\", exported_container=\"%s\", exported_namespace=\"%s\",  type=\"vram\"})", pod, container, namespace)
+		query = fmt.Sprintf("avg(mx_memory_used{exported_pod=\"%s\", exported_container=\"%s\", exported_namespace=\"%s\",  type=\"vram\"})", pod, container, namespace)
 	default:
 		return 0, errors.New("provider not exists")
 	}
