@@ -104,7 +104,6 @@ func (h *Hygon) FetchDevices(node *corev1.Node) ([]*util.DeviceInfo, error) {
 			continue
 		}
 
-		nodedevice.ID = devInfo.ID
 		nodedevice.AliasId = fmt.Sprintf("%s-dcu-%s", node.Name, devInfo.ID)
 	}
 	return nodedevices, nil
