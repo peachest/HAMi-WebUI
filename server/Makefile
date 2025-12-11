@@ -69,7 +69,9 @@ build-image:
 .PHONY: buildx-image
 buildx-image:
 	echo ${REF}
-	docker buildx build --platform linux/amd64,linux/arm64 --push -t ${DOCKER_IMAGE}:${REF} .
+	docker buildx build --platform linux/amd64,linux/arm64 --push -t ${DOCKER_REPO_URL}/aip-mm/projecthami/hami-webui-be-oss .
+	docker buildx build --platform linux/arm64 --push -t ${DOCKER_REPO_URL}/aip-arm/projecthami/hami-webui-be-oss .
+	docker buildx build --platform linux/amd64 --push -t ${DOCKER_REPO_URL}/aip-amd/projecthami/hami-webui-be-oss .
 .PHONY: push-image
 push-image:
 	docker push ${DOCKER_IMAGE}:${VERSION}
