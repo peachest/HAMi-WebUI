@@ -12,6 +12,7 @@ WORKDIR /src
 
 COPY . .
 
+RUN sed -i 's#http://.*ubuntu#http://mirrors.ustc.edu.cn/ubuntu#g' /etc/apt/sources.list
 RUN apt-get update && apt-get install -y --no-install-recommends protobuf-compiler
 
 
