@@ -11,6 +11,10 @@ ENV GOBIN=/opt/go/bin
 WORKDIR /src
 
 COPY . .
+RUN sed -i 's|http://mirrors.aliyun.com/ubuntu|http://archive.ubuntu.com/ubuntu|g' /etc/apt/sources.list && \
+    apt-get update && \
+    apt-get install -y --no-install-recommends protobuf-compiler && \
+    rm -rf /var/lib/apt/lists/*
 
 RUN apt-get update && apt-get install -y --no-install-recommends protobuf-compiler
 
