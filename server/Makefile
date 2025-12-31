@@ -17,6 +17,7 @@ REF=$(if $(CI_COMMIT_REF_NAME),$(CI_COMMIT_REF_NAME),$(shell git rev-parse --abb
 # 1. Install Go dependencies
 .PHONY: install-deps
 install-deps:
+	export GOPROXY=http://172.16.251.11:1111,direct
 	go install github.com/google/wire/cmd/wire@v0.6.0
 	go install github.com/envoyproxy/protoc-gen-validate@v1.2.1
 	go install github.com/go-kratos/kratos/cmd/kratos/v2@latest
@@ -49,7 +50,7 @@ tidy-mod:
 build-linux:
 	@ for dir in $(DIRS); \
 	do \
-		GO_ENABLED=1 GOOS=linux GOARCH=${ARCH} go build -o $(BUILD_PATH)$$dir ${CMD_PATH}$$dir; \
+		GOPROXY="http://172.16.251.11:1111,direct" GO_ENABLED=1 GOOS=linux GOARCH=${ARCH} go build -o $(BUILD_PATH)$$dir ${CMD_PATH}$$dir; \
 		echo "Built $$dir for Linux"; \
 	done
 
