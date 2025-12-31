@@ -16,6 +16,8 @@ data:
       address: {{ ternary .Values.externalPrometheus.address (printf "http://%s-kube-prometh-prometheus.%s.svc.cluster.local:9090" (include "hami-webui.fullname" .) (include "hami-webui.namespace" .)) .Values.externalPrometheus.enabled }}
       timeout: 1m
     enable_metrics_cache: {{ .Values.enableMetricsCache }}
+    exporter_concurrency_limit: {{ .Values.exporterConcurrencyLimit }}
+    metrics_generate_interval: {{ .Values.metricsGenerateInterval }}
     node_selectors:
     {{- range $key, $value := .Values.vendorNodeSelectors }}
       {{ $key }}: {{ $value }}

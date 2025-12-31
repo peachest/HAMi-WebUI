@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"math"
 	"strings"
-	"time"
 
 	"golang.org/x/sync/errgroup"
 
@@ -30,8 +29,6 @@ type MetricsGenerator struct {
 	nodeUsecase      *biz.NodeUsecase
 	podUsecase       *biz.PodUseCase
 	monitorService   *service.MonitorService
-	cacheTime        time.Time
-	enableCache      bool
 	concurrencyLimit int
 }
 
@@ -61,30 +58,14 @@ func NewMetricsGenerator(
 		nodeUsecase:      nodeUsecase,
 		podUsecase:       podUsecase,
 		monitorService:   monitorService,
-		enableCache:      c.EnableMetricsCache,
 		concurrencyLimit: concurrency,
 	}
 }
-func (s *MetricsGenerator) generatorCache() time.Time {
-	now := time.Now()
-	return time.Date(now.Year(), now.Month(), now.Day(), now.Hour(), now.Minute(), 0, 0, now.Location())
-}
-
-func (s *MetricsGenerator) cacheIsValidate() bool {
-	if s.enableCache && s.cacheTime == s.generatorCache() {
-		return true
-	}
-	return false
-}
 
 func (s *MetricsGenerator) GenerateMetrics(ctx context.Context) error {
-	if s.cacheIsValidate() {
-		return nil
-	}
 	reset()                         // 重置所有指标缓存值
 	s.GenerateDeviceMetrics(ctx)    // 卡维度指标
 	s.GenerateContainerMetrics(ctx) // 任务维度指标
-	s.cacheTime = s.generatorCache()
 	return nil
 }
 
