@@ -9,9 +9,12 @@ const (
 	// IluvatarUseUUID is user can use specify Iluvatar device for set Iluvatar UUID.
 	AscendDeviceUseUUID = "huawei.com/use-ascenduuid"
 	// IluvatarNoUseUUID is user can not use specify Iluvatar device for set Iluvatar UUID.
-	AscendNoUseUUID            = "huawei.com/nouse-ascenduuid"
-	Ascend910BNodeRegisterAnno = "hami.io/node-register-Ascend910B"
+	AscendNoUseUUID             = "huawei.com/nouse-ascenduuid"
+	Ascend910BNodeRegisterAnno  = "hami.io/node-register-Ascend910B"
+
 	Ascend310PNodeRegisterAnno = "hami.io/node-register-Ascend310P"
+
+	AscendNodeRegisterAnnoPrefix = "hami.io/node-register-Ascend"
 )
 
 var (

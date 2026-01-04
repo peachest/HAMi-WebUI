@@ -3,13 +3,15 @@ package ascend
 import (
 	"context"
 	"fmt"
+	"strconv"
+	"strings"
+	"vgpu/internal/data/prom"
+	"vgpu/internal/provider/util"
+
 	"github.com/go-kratos/kratos/v2/log"
 	"github.com/prometheus/common/model"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/labels"
-	"strconv"
-	"vgpu/internal/data/prom"
-	"vgpu/internal/provider/util"
 )
 
 type Ascend struct {
@@ -70,14 +72,13 @@ func (a *Ascend) GetDevicesFromPrometheus(node *corev1.Node) map[string]*util.De
 	return device
 }
 
-func (a *Ascend) FetchDevices(node *corev1.Node) ([]*util.DeviceInfo, error) {
-	for _, anno := range AscendNodeRegisterAnnos {
-		tmpDevice := a.GetDevicesFromPrometheus(node)
-		anno, ok := node.Annotations[anno]
-		if !ok {
-			log.Infof("anno %s not found", anno)
+func (a *Ascend) FetchDevices(node *corev1.Node) (ret []*util.DeviceInfo, err error) {
+	tmpDevice := a.GetDevicesFromPrometheus(node)
+	for k, anno := range node.Annotations {
+		if !strings.HasPrefix(k, AscendNodeRegisterAnnoPrefix) {
 			continue
 		}
+
 		nodeDevices, err := util.UnMarshalNodeDevices(anno)
 		if err != nil {
 			return []*util.DeviceInfo{}, err
@@ -90,7 +91,7 @@ func (a *Ascend) FetchDevices(node *corev1.Node) ([]*util.DeviceInfo, error) {
 				log.Infof("Key %d not found in tmpDevice", i)
 			}
 		}
-		return nodeDevices, nil
+		ret = append(ret, nodeDevices...)
 	}
-	return []*util.DeviceInfo{}, fmt.Errorf("")
+	return
 }
