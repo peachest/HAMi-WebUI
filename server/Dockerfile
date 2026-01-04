@@ -3,7 +3,7 @@ ARG TARGETARCH
 ARG ARCH=${TARGETARCH}
 
 # ENV GOSUMDB=off
-ENV GOPROXY=http://172.16.251.11:1111,https://goproxy.io/,https://mirrors.aliyun.com/goproxy,direct
+ENV GOPROXY=http://172.16.251.11:1111,https://goproxy.cn,https://mirrors.aliyun.com/goproxy,https://goproxy.io/,direct
 ENV GOBIN=/opt/go/bin
 
 # RUN sed -i 's/deb.debian.org/mirrors.ustc.edu.cn/g' /etc/apt/sources.list.d/debian.sources
@@ -11,8 +11,12 @@ ENV GOBIN=/opt/go/bin
 WORKDIR /src
 
 COPY . .
+RUN sed -i 's|http://mirrors.aliyun.com/ubuntu/|https://mirrors.ustc.edu.cn/ubuntu/|g'  /etc/apt/sources.list.d/ubuntu.sources && \
+    apt-get update && \
+    apt-get install -y --no-install-recommends protobuf-compiler && \
+    rm -rf /var/lib/apt/lists/*
 
-RUN apt-get update && apt-get install -y --no-install-recommends protobuf-compiler
+# RUN apt-get update && apt-get install -y --no-install-recommends protobuf-compiler
 
 
 RUN PATH=/root/go/bin:$PATH make build

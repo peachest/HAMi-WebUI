@@ -1,6 +1,8 @@
 package server
 
 import (
+	"context"
+	"time"
 	v1 "vgpu/api/v1"
 	"vgpu/internal/conf"
 	"vgpu/internal/exporter"
@@ -43,10 +45,28 @@ func NewHTTPServer(c *conf.Bootstrap,
 	v1.RegisterContainerHTTPServer(srv, ctr)
 	v1.RegisterMonitorHTTPServer(srv, monitor)
 	srv.HandlePrefix("/q/", openapiv2.NewHandler())
+	intervalStr := c.MetricsGenerateInterval
+	if intervalStr == "" {
+		intervalStr = "15s"
+	}
+	interval, err := time.ParseDuration(intervalStr)
+	if err != nil || interval <= 0 {
+		interval = 15 * time.Second
+	}
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), interval)
+		_ = exporter.GenerateMetrics(ctx)
+		cancel()
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+		for range ticker.C {
+			ctx, cancel := context.WithTimeout(context.Background(), interval)
+			_ = exporter.GenerateMetrics(ctx)
+			cancel()
+		}
+	}()
 	srv.HandleFunc("/metrics", func(w http.ResponseWriter, r *http.Request) {
 		log.Infof("metrics request: %s", r.URL.String())
-		exporter.GenerateMetrics(r.Context())
-		//mock.MockMetrics(r.Context())
 		promhttp.Handler().ServeHTTP(w, r)
 	})
 	return srv

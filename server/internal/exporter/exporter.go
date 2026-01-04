@@ -6,7 +6,8 @@ import (
 	"fmt"
 	"math"
 	"strings"
-	"time"
+
+	"golang.org/x/sync/errgroup"
 
 	pb "vgpu/api/v1"
 	"vgpu/internal/biz"
@@ -24,12 +25,11 @@ var ProviderSet = wire.NewSet(
 )
 
 type MetricsGenerator struct {
-	promClient     *prom.Client
-	nodeUsecase    *biz.NodeUsecase
-	podUsecase     *biz.PodUseCase
-	monitorService *service.MonitorService
-	cacheTime      time.Time
-	enableCache    bool
+	promClient       *prom.Client
+	nodeUsecase      *biz.NodeUsecase
+	podUsecase       *biz.PodUseCase
+	monitorService   *service.MonitorService
+	concurrencyLimit int
 }
 
 // roundToTwoDecimal 将浮点数保留两位小数
@@ -49,34 +49,23 @@ func NewMetricsGenerator(
 	podUsecase *biz.PodUseCase,
 	monitorService *service.MonitorService,
 ) *MetricsGenerator {
+	concurrency := int(c.ExporterConcurrencyLimit)
+	if concurrency <= 0 {
+		concurrency = 16
+	}
 	return &MetricsGenerator{
-		promClient:     promClient,
-		nodeUsecase:    nodeUsecase,
-		podUsecase:     podUsecase,
-		monitorService: monitorService,
-		enableCache:    c.EnableMetricsCache,
+		promClient:       promClient,
+		nodeUsecase:      nodeUsecase,
+		podUsecase:       podUsecase,
+		monitorService:   monitorService,
+		concurrencyLimit: concurrency,
 	}
-}
-func (s *MetricsGenerator) generatorCache() time.Time {
-	now := time.Now()
-	return time.Date(now.Year(), now.Month(), now.Day(), now.Hour(), now.Minute(), 0, 0, now.Location())
-}
-
-func (s *MetricsGenerator) cacheIsValidate() bool {
-	if s.enableCache && s.cacheTime == s.generatorCache() {
-		return true
-	}
-	return false
 }
 
 func (s *MetricsGenerator) GenerateMetrics(ctx context.Context) error {
-	if s.cacheIsValidate() {
-		return nil
-	}
 	reset()                         // 重置所有指标缓存值
 	s.GenerateDeviceMetrics(ctx)    // 卡维度指标
 	s.GenerateContainerMetrics(ctx) // 任务维度指标
-	s.cacheTime = s.generatorCache()
 	return nil
 }
 
@@ -86,70 +75,64 @@ func (s *MetricsGenerator) GenerateDeviceMetrics(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	for _, device := range deviceInfos {
-		provider := device.Provider
-		// 查询device的驱动版本以及设备号
-		deviceAdditional, err := s.queryDeviceAdditional(ctx, provider, device.Id)
-		var driver, deviceNo = "", ""
-		if err == nil && deviceAdditional != nil {
-			driver = deviceAdditional.DriverVersion
-			deviceNo = deviceAdditional.DeviceNo
-		}
-
-		// 分配率指标
-		HamiVgpuCount.WithLabelValues(device.NodeName, provider, device.Type, device.Id, driver, deviceNo).Set(float64(device.Count))
-		HamiVmemorySize.WithLabelValues(device.NodeName, provider, device.Type, device.Id, driver, deviceNo).Set(float64(device.Devmem))
-		HamiVcoreSize.WithLabelValues(device.NodeName, provider, device.Type, device.Id, driver, deviceNo).Set(100)
-		// 超配比指标
-		HamiVCoreScaling.WithLabelValues(device.NodeName, provider, device.Type, device.Id, driver, deviceNo).Set(float64(device.Devcore) / 100)
-		HamiCoreSize.WithLabelValues(device.NodeName, provider, device.Type, device.Id, driver, deviceNo).Set(float64(device.Devcore))
-		deviceMemUsed, err := s.deviceMemUsed(ctx, provider, device.Id)
-		if err == nil {
-			HamiMemoryUsed.WithLabelValues(device.NodeName, provider, device.Type, device.Id, driver, deviceNo).Set(float64(deviceMemUsed))
-		}
-		HamiMemorySize.WithLabelValues(device.NodeName, provider, device.Type, device.Id, driver, deviceNo).Set(float64(device.Devmem))
-		HamiMemoryUtil.WithLabelValues(device.NodeName, provider, device.Type, device.Id, driver, deviceNo).Set(roundToOneDecimal(100 * float64(deviceMemUsed/float32(device.Devmem))))
-		deviceMemSize, err := s.deviceMemTotal(ctx, provider, device.Id)
-		if err == nil && deviceMemSize > 0 {
-			HamiVMemoryScaling.WithLabelValues(device.NodeName, provider, device.Type, device.Id, driver, deviceNo).Set(roundToOneDecimal(float64(float32(device.Devmem) / deviceMemSize)))
-		}
-		// TODO refine
-		actualCoreUtil, err := s.deviceCoreUtil(ctx, provider, device.Id)
-		if err == nil {
-			HamiCoreUsed.WithLabelValues(device.NodeName, provider, device.Type, device.Id, driver, deviceNo).Set(float64(actualCoreUtil))
-			HamiCoreUtil.WithLabelValues(device.NodeName, provider, device.Type, device.Id, driver, deviceNo).Set(float64(actualCoreUtil))
-		}
-		actualCoreUtilAvg, err := s.deviceCoreUtil(ctx, provider, device.Id)
-		if err == nil {
-			HamiCoreUsedAvg.WithLabelValues(device.NodeName, provider, device.Type, device.Id, driver, deviceNo).Set(float64(actualCoreUtilAvg))
-			HamiCoreUtilAvg.WithLabelValues(device.NodeName, provider, device.Type, device.Id, driver, deviceNo).Set(float64(actualCoreUtilAvg))
-		}
-		gpuTemperature, err := s.gpuTemperature(ctx, provider, device.Id)
-		if err == nil {
-			HamiDeviceTemperature.WithLabelValues(device.NodeName, provider, device.Type, device.Id, driver, deviceNo).Set(float64(gpuTemperature))
-		}
-		memoryTemperature, err := s.memoryTemperature(ctx, provider, device.Id)
-		if err == nil {
-			HamiDeviceMemoryTemperature.WithLabelValues(device.NodeName, provider, device.Type, device.Id, driver, deviceNo).Set(float64(memoryTemperature))
-		}
-		gpuPower, err := s.gpuPower(ctx, provider, device.Id)
-		if err == nil {
-			HamiDevicePower.WithLabelValues(device.NodeName, provider, device.Type, device.Id, driver, deviceNo).Set(float64(gpuPower))
-		}
-		fanSpeed, err := s.fanSpeed(ctx, provider, device.Id)
-		if err == nil {
-			switch provider {
-			case biz.NvidiaGPUDevice:
-				HamiDeviceFanSpeedP.WithLabelValues(device.NodeName, provider, device.Type, device.Id, driver, deviceNo).Set(float64(fanSpeed))
-			case biz.CambriconGPUDevice:
-				HamiDeviceFanSpeedR.WithLabelValues(device.NodeName, provider, device.Type, device.Id, driver, deviceNo).Set(float64(fanSpeed))
+	g, _ := errgroup.WithContext(ctx)
+	g.SetLimit(s.concurrencyLimit)
+	for _, d := range deviceInfos {
+		device := d
+		g.Go(func() error {
+			provider := device.Provider
+			deviceAdditional, err := s.queryDeviceAdditional(ctx, provider, device.Id)
+			driver, deviceNo := "", ""
+			if err == nil && deviceAdditional != nil {
+				driver = deviceAdditional.DriverVersion
+				deviceNo = deviceAdditional.DeviceNo
 			}
-		}
-		gpuHardwareHealth, err := s.gpuHardwareHealth(ctx, provider, device.Id)
-		if err == nil {
-			HamiDeviceHardwareHealth.WithLabelValues(device.NodeName, provider, device.Type, device.Id, driver, deviceNo).Set(float64(gpuHardwareHealth))
-		}
+			HamiVgpuCount.WithLabelValues(device.NodeName, provider, device.Type, device.Id, driver, deviceNo).Set(float64(device.Count))
+			HamiVmemorySize.WithLabelValues(device.NodeName, provider, device.Type, device.Id, driver, deviceNo).Set(float64(device.Devmem))
+			HamiVcoreSize.WithLabelValues(device.NodeName, provider, device.Type, device.Id, driver, deviceNo).Set(100)
+			HamiVCoreScaling.WithLabelValues(device.NodeName, provider, device.Type, device.Id, driver, deviceNo).Set(float64(device.Devcore) / 100)
+			HamiCoreSize.WithLabelValues(device.NodeName, provider, device.Type, device.Id, driver, deviceNo).Set(float64(device.Devcore))
+			if v, err := s.deviceMemUsed(ctx, provider, device.Id); err == nil {
+				HamiMemoryUsed.WithLabelValues(device.NodeName, provider, device.Type, device.Id, driver, deviceNo).Set(float64(v))
+				HamiMemoryUtil.WithLabelValues(device.NodeName, provider, device.Type, device.Id, driver, deviceNo).Set(roundToOneDecimal(100 * float64(v/float32(device.Devmem))))
+			} else {
+				HamiMemorySize.WithLabelValues(device.NodeName, provider, device.Type, device.Id, driver, deviceNo).Set(float64(device.Devmem))
+			}
+			if total, err := s.deviceMemTotal(ctx, provider, device.Id); err == nil && total > 0 {
+				HamiVMemoryScaling.WithLabelValues(device.NodeName, provider, device.Type, device.Id, driver, deviceNo).Set(roundToOneDecimal(float64(float32(device.Devmem) / total)))
+			}
+			if util, err := s.deviceCoreUtil(ctx, provider, device.Id); err == nil {
+				HamiCoreUsed.WithLabelValues(device.NodeName, provider, device.Type, device.Id, driver, deviceNo).Set(float64(util))
+				HamiCoreUtil.WithLabelValues(device.NodeName, provider, device.Type, device.Id, driver, deviceNo).Set(float64(util))
+			}
+			if utilAvg, err := s.deviceCoreUtil(ctx, provider, device.Id); err == nil {
+				HamiCoreUsedAvg.WithLabelValues(device.NodeName, provider, device.Type, device.Id, driver, deviceNo).Set(float64(utilAvg))
+				HamiCoreUtilAvg.WithLabelValues(device.NodeName, provider, device.Type, device.Id, driver, deviceNo).Set(float64(utilAvg))
+			}
+			if t, err := s.gpuTemperature(ctx, provider, device.Id); err == nil {
+				HamiDeviceTemperature.WithLabelValues(device.NodeName, provider, device.Type, device.Id, driver, deviceNo).Set(float64(t))
+			}
+			if mt, err := s.memoryTemperature(ctx, provider, device.Id); err == nil {
+				HamiDeviceMemoryTemperature.WithLabelValues(device.NodeName, provider, device.Type, device.Id, driver, deviceNo).Set(float64(mt))
+			}
+			if p, err := s.gpuPower(ctx, provider, device.Id); err == nil {
+				HamiDevicePower.WithLabelValues(device.NodeName, provider, device.Type, device.Id, driver, deviceNo).Set(float64(p))
+			}
+			if fs, err := s.fanSpeed(ctx, provider, device.Id); err == nil {
+				switch provider {
+				case biz.NvidiaGPUDevice:
+					HamiDeviceFanSpeedP.WithLabelValues(device.NodeName, provider, device.Type, device.Id, driver, deviceNo).Set(float64(fs))
+				case biz.CambriconGPUDevice:
+					HamiDeviceFanSpeedR.WithLabelValues(device.NodeName, provider, device.Type, device.Id, driver, deviceNo).Set(float64(fs))
+				}
+			}
+			if h, err := s.gpuHardwareHealth(ctx, provider, device.Id); err == nil {
+				HamiDeviceHardwareHealth.WithLabelValues(device.NodeName, provider, device.Type, device.Id, driver, deviceNo).Set(float64(h))
+			}
+			return nil
+		})
 	}
+	_ = g.Wait()
 	return nil
 }
 
@@ -163,84 +146,89 @@ func (s *MetricsGenerator) GenerateContainerMetrics(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	for _, device := range deviceInfos {
-		for _, c := range containers {
-			var vGPU int32 = 0
-			var core int32 = 0
-			var memory int32 = 0
-			var provider = ""
-			for _, cd := range c.ContainerDevices {
-				if device.AliasId != "" && !strings.HasPrefix(cd.UUID, device.AliasId) {
-					continue
+	g, _ := errgroup.WithContext(ctx)
+	g.SetLimit(s.concurrencyLimit)
+	for _, d := range deviceInfos {
+		device := d
+		for _, cont := range containers {
+			c := cont
+			g.Go(func() error {
+				var vGPU int32 = 0
+				var core int32 = 0
+				var memory int32 = 0
+				var provider = ""
+				for _, cd := range c.ContainerDevices {
+					if device.AliasId != "" && !strings.HasPrefix(cd.UUID, device.AliasId) {
+						continue
+					}
+					vGPU = vGPU + 1
+					core = core + cd.Usedcores
+					memory = memory + cd.Usedmem
+					provider = cd.Type
+					if strings.HasPrefix(provider, biz.AscendGPUDevice) {
+						provider = biz.AscendGPUDevice
+					}
 				}
-				vGPU = vGPU + 1
-				core = core + cd.Usedcores
-				memory = memory + cd.Usedmem
-				provider = cd.Type
-				if strings.HasPrefix(provider, biz.AscendGPUDevice) {
-					provider = biz.AscendGPUDevice
+				if provider == "" {
+					return nil
 				}
-			}
-			if provider == "" {
-				continue
-			}
-			HamiContainerVgpuAllocated.WithLabelValues(device.NodeName, provider, device.Type, device.Id, c.PodName, c.Name, c.Namespace, fmt.Sprintf("%s:%s", c.Name, c.PodUID)).Set(float64(vGPU))
-			HamiContainerVmemoryAllocated.WithLabelValues(device.NodeName, provider, device.Type, device.Id, c.PodName, c.Name, c.Namespace, fmt.Sprintf("%s:%s", c.Name, c.PodUID)).Set(float64(memory))
+				HamiContainerVgpuAllocated.WithLabelValues(device.NodeName, provider, device.Type, device.Id, c.PodName, c.Name, c.Namespace, fmt.Sprintf("%s:%s", c.Name, c.PodUID)).Set(float64(vGPU))
+				HamiContainerVmemoryAllocated.WithLabelValues(device.NodeName, provider, device.Type, device.Id, c.PodName, c.Name, c.Namespace, fmt.Sprintf("%s:%s", c.Name, c.PodUID)).Set(float64(memory))
+				// fix metric value of Ascend GPU device core allocation, refer to AIP-108392
+				if provider == biz.AscendGPUDevice {
+					if deviceMemSize, err := s.deviceMemTotal(ctx, provider, device.Id); err == nil && deviceMemSize > 0 {
+						perc := float32(memory) / deviceMemSize
+						core = int32(float32(100) * perc)
+					}
+				}
+				HamiContainerVcoreAllocated.WithLabelValues(device.NodeName, provider, device.Type, device.Id, c.PodName, c.Name, c.Namespace, fmt.Sprintf("%s:%s", c.Name, c.PodUID)).Set(float64(core))
 
-			// fix metric value of Ascend GPU device core allocation, refer to AIP-108392
-			if provider == biz.AscendGPUDevice {
-				deviceMemSize, err := s.deviceMemTotal(ctx, provider, device.Id)
-				if err == nil && deviceMemSize > 0 {
-					perc := float32(memory) / deviceMemSize
-					core = int32(float32(100) * perc)
+				// 查询任务在当前设备下的算力利用率
+				taskCoreUsed, err := s.taskCoreUsed(ctx, provider, c.Namespace, c.PodName, c.Name, c.PodUID, device.Id)
+				fmt.Printf("GenerateContainerMetrics taskCoreUsed=%.2f, core=%d", taskCoreUsed, core)
+				if err == nil {
+					used := float64(0)
+					util := float64(0)
+					switch provider {
+					case biz.NvidiaGPUDevice:
+						used = float64(taskCoreUsed)
+						util = roundToOneDecimal(100 * float64(taskCoreUsed) / float64(core))
+					case biz.CambriconGPUDevice:
+						used = float64(taskCoreUsed) / 100 * float64(core)
+						util = float64(taskCoreUsed)
+					case biz.HygonGPUDevice, biz.AscendGPUDevice:
+						used = float64(taskCoreUsed)
+						util = roundToOneDecimal(100 * float64(taskCoreUsed) / float64(core))
+					case biz.MetaxGPUDevice:
+						used = float64(taskCoreUsed)
+						util = roundToOneDecimal(100 * float64(taskCoreUsed) / float64(core))
+					default:
+					}
+					if cardCoreUtil, err := s.deviceCoreUtil(ctx, provider, device.Id); err == nil && used != 0 && cardCoreUtil > 95 {
+						used = float64(cardCoreUtil) / 100 * float64(core)
+						util = float64(cardCoreUtil)
+					}
+					HamiContainerCoreUsed.WithLabelValues(device.NodeName, provider, device.Type, device.Id, c.PodName, c.Name, c.Namespace).Set(used)
+					HamiContainerCoreUtil.WithLabelValues(device.NodeName, provider, device.Type, device.Id, c.PodName, c.Name, c.Namespace).Set(util)
 				}
-			}
-			HamiContainerVcoreAllocated.WithLabelValues(device.NodeName, provider, device.Type, device.Id, c.PodName, c.Name, c.Namespace, fmt.Sprintf("%s:%s", c.Name, c.PodUID)).Set(float64(core))
-			// 查询任务在当前设备下的算力利用率
-			taskCoreUsed, err := s.taskCoreUsed(ctx, provider, c.Namespace, c.PodName, c.Name, c.PodUID, device.Id)
-			fmt.Printf("GenerateContainerMetrics taskCoreUsed=%.2f, core=%d", taskCoreUsed, core)
-			if err == nil {
-				used := float64(0)
-				util := float64(0)
-				switch provider {
-				case biz.NvidiaGPUDevice:
-					used = float64(taskCoreUsed)
-					util = roundToOneDecimal(100 * float64(taskCoreUsed) / float64(core))
-				case biz.CambriconGPUDevice:
-					used = float64(taskCoreUsed) / 100 * float64(core)
-					util = float64(taskCoreUsed)
-				case biz.HygonGPUDevice, biz.AscendGPUDevice:
-					used = float64(taskCoreUsed)
-					util = roundToOneDecimal(100 * float64(taskCoreUsed) / float64(core))
-				case biz.MetaxGPUDevice:
-					used = float64(taskCoreUsed)
-					util = roundToOneDecimal(100 * float64(taskCoreUsed) / float64(core))
-				default:
+				if taskMemoryUsed, err := s.taskMemoryUsed(ctx, provider, c.Namespace, c.PodName, c.Name, c.PodUID, device.Id); err == nil {
+					switch provider {
+					case biz.CambriconGPUDevice:
+						taskMemoryUsed = float32((taskMemoryUsed/100)*float32(memory)) * 1024 * 1024
+					case biz.AscendGPUDevice:
+						taskMemoryUsed = float32(taskMemoryUsed) * 1024 * 1024
+					case biz.MetaxGPUDevice:
+						taskMemoryUsed = float32(taskMemoryUsed) * 1024
+					default:
+					}
+					HamiContainerMemoryUsed.WithLabelValues(device.NodeName, provider, device.Type, device.Id, c.PodName, c.Name, c.Namespace).Set(float64(taskMemoryUsed / 1024 / 1024))
+					HamiContainerMemoryUtil.WithLabelValues(device.NodeName, provider, device.Type, device.Id, c.PodName, c.Name, c.Namespace).Set(roundToOneDecimal(100 * float64(taskMemoryUsed/1024/1024) / float64(memory)))
 				}
-				cardCoreUtil, err := s.deviceCoreUtil(ctx, provider, device.Id)
-				if err == nil && used != 0 && cardCoreUtil > 95 {
-					used = float64(cardCoreUtil) / 100 * float64(core)
-					util = float64(cardCoreUtil)
-				}
-				HamiContainerCoreUsed.WithLabelValues(device.NodeName, provider, device.Type, device.Id, c.PodName, c.Name, c.Namespace).Set(used)
-				HamiContainerCoreUtil.WithLabelValues(device.NodeName, provider, device.Type, device.Id, c.PodName, c.Name, c.Namespace).Set(util)
-			}
-			taskMemoryUsed, err := s.taskMemoryUsed(ctx, provider, c.Namespace, c.PodName, c.Name, c.PodUID, device.Id)
-			if err == nil {
-				switch provider {
-				case biz.CambriconGPUDevice:
-					taskMemoryUsed = float32((taskMemoryUsed/100)*float32(memory)) * 1024 * 1024
-				case biz.AscendGPUDevice:
-					taskMemoryUsed = float32(taskMemoryUsed) * 1024 * 1024
-				case biz.MetaxGPUDevice:
-					taskMemoryUsed = float32(taskMemoryUsed) * 1024
-				default:
-				}
-				HamiContainerMemoryUsed.WithLabelValues(device.NodeName, provider, device.Type, device.Id, c.PodName, c.Name, c.Namespace).Set(float64(taskMemoryUsed / 1024 / 1024))
-				HamiContainerMemoryUtil.WithLabelValues(device.NodeName, provider, device.Type, device.Id, c.PodName, c.Name, c.Namespace).Set(roundToOneDecimal(100 * float64(taskMemoryUsed/1024/1024) / float64(memory)))
-			}
+				return nil
+			})
 		}
 	}
+	_ = g.Wait()
 	return nil
 }
 

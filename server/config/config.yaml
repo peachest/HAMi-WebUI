@@ -14,3 +14,5 @@ node_selectors:
   MLU: mlu=on
   NVIDIA: gpu=on
 enable_metrics_cache: false
+exporter_concurrency_limit: 16
+metrics_generate_interval: 15s
