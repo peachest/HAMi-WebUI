@@ -182,7 +182,7 @@ func (r *nodeRepo) ListAllDevices(context.Context) ([]*biz.DeviceInfo, error) {
 func (r *nodeRepo) FindDeviceByAliasId(aliasId string) (*biz.DeviceInfo, error) {
 	for _, node := range r.nodes {
 		for _, d := range node.Devices {
-			if d.AliasId == aliasId {
+			if d.ExactAlias(aliasId) {
 				return d, nil
 			}
 		}

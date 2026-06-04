@@ -11,10 +11,13 @@ const (
 	// IluvatarNoUseUUID is user can not use specify Iluvatar device for set Iluvatar UUID.
 	AscendNoUseUUID             = "huawei.com/nouse-ascenduuid"
 	Ascend910BNodeRegisterAnno  = "hami.io/node-register-Ascend910B"
-
+	Ascend910CNodeRegisterAnno  = "hami.io/node-register-Ascend910C"
 	Ascend310PNodeRegisterAnno = "hami.io/node-register-Ascend310P"
 
 	AscendNodeRegisterAnnoPrefix = "hami.io/node-register-Ascend"
+
+	// Ascend910CDeviceMergeSeparator 用于拼接双芯片 UUID
+	Ascend910CDeviceMergeSeparator = "---"
 )
 
 var (
@@ -25,7 +28,7 @@ var (
 )
 
 func init() {
-	AscendNodeRegisterAnnos = []string{Ascend910BNodeRegisterAnno, Ascend310PNodeRegisterAnno}
+	AscendNodeRegisterAnnos = []string{Ascend910BNodeRegisterAnno, Ascend910CNodeRegisterAnno, Ascend310PNodeRegisterAnno}
 	util.InRequestDevices[AscendDevice] = "hami.io/Ascend910B-devices-to-allocate"
 	util.SupportDevices[AscendDevice] = "hami.io/Ascend910B-devices-allocated"
 	util.InRequestDevices[Ascend310PDevice] = "hami.io/Ascend310P-devices-to-allocate"

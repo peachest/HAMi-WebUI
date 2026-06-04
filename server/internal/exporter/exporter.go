@@ -158,7 +158,7 @@ func (s *MetricsGenerator) GenerateContainerMetrics(ctx context.Context) error {
 				var memory int32 = 0
 				var provider = ""
 				for _, cd := range c.ContainerDevices {
-					if device.AliasId != "" && !strings.HasPrefix(cd.UUID, device.AliasId) {
+					if device.AliasId != "" && !device.MatchAlias(cd.UUID) {
 						continue
 					}
 					vGPU = vGPU + 1
@@ -254,7 +254,14 @@ func (s *MetricsGenerator) deviceMemUsed(ctx context.Context, provider, deviceUU
 	case biz.CambriconGPUDevice:
 		query = fmt.Sprintf("avg(mlu_memory_used{uuid=\"%s\"})", deviceUUID)
 	case biz.AscendGPUDevice:
-		query = fmt.Sprintf("avg(npu_chip_info_hbm_used_memory{vdie_id=\"%s\"})", deviceUUID)
+		qFn := func(_ context.Context, uuid string) (float32, error) {
+			q := fmt.Sprintf("avg(npu_chip_info_hbm_used_memory{vdie_id=\"%s\"})", uuid)
+			return s.queryInstantVal(ctx, q)
+		}
+		if strings.Contains(deviceUUID, "---") {
+			return queryAscend910CSplit(ctx, deviceUUID, qFn, sumAgg)
+		}
+		return qFn(ctx, deviceUUID)
 	case biz.HygonGPUDevice:
 		query = fmt.Sprintf("avg(dcu_usedmemory_bytes{device_id=\"%s\"})", deviceUUID)
 	default:
@@ -281,7 +288,14 @@ func (s *MetricsGenerator) deviceMemTotal(ctx context.Context, provider, deviceU
 	case biz.CambriconGPUDevice:
 		query = fmt.Sprintf("avg(mlu_memory_total{uuid=\"%s\"})", deviceUUID)
 	case biz.AscendGPUDevice:
-		query = fmt.Sprintf("avg(npu_chip_info_hbm_total_memory{vdie_id=\"%s\"})", deviceUUID)
+		qFn := func(_ context.Context, uuid string) (float32, error) {
+			q := fmt.Sprintf("avg(npu_chip_info_hbm_total_memory{vdie_id=\"%s\"})", uuid)
+			return s.queryInstantVal(ctx, q)
+		}
+		if strings.Contains(deviceUUID, "---") {
+			return queryAscend910CSplit(ctx, deviceUUID, qFn, sumAgg)
+		}
+		return qFn(ctx, deviceUUID)
 	case biz.HygonGPUDevice:
 		query = fmt.Sprintf("avg(dcu_memorycap_bytes{device_id=\"%s\"})", deviceUUID)
 	default:
@@ -310,7 +324,14 @@ func (s *MetricsGenerator) deviceCoreUtil(ctx context.Context, provider, deviceU
 	case biz.CambriconGPUDevice:
 		query = fmt.Sprintf("avg(mlu_utilization{uuid=\"%s\"})", deviceUUID)
 	case biz.AscendGPUDevice:
-		query = fmt.Sprintf("avg(npu_chip_info_utilization{vdie_id=\"%s\"})", deviceUUID)
+		qFn := func(_ context.Context, uuid string) (float32, error) {
+			q := fmt.Sprintf("avg(npu_chip_info_utilization{vdie_id=\"%s\"})", uuid)
+			return s.queryInstantVal(ctx, q)
+		}
+		if strings.Contains(deviceUUID, "---") {
+			return queryAscend910CSplit(ctx, deviceUUID, qFn, avgAgg)
+		}
+		return qFn(ctx, deviceUUID)
 	case biz.HygonGPUDevice:
 		query = fmt.Sprintf("avg(dcu_utilizationrate{device_id=\"%s\"})", deviceUUID)
 	default:
@@ -407,7 +428,14 @@ func (s *MetricsGenerator) gpuTemperature(ctx context.Context, provider, deviceU
 	case biz.CambriconGPUDevice:
 		query = fmt.Sprintf("avg(mlu_temperature{uuid=\"%s\"})", deviceUUID)
 	case biz.AscendGPUDevice:
-		query = fmt.Sprintf("avg(npu_chip_info_temperature{vdie_id=\"%s\"})", deviceUUID)
+		qFn := func(_ context.Context, uuid string) (float32, error) {
+			q := fmt.Sprintf("avg(npu_chip_info_temperature{vdie_id=\"%s\"})", uuid)
+			return s.queryInstantVal(ctx, q)
+		}
+		if strings.Contains(deviceUUID, "---") {
+			return queryAscend910CSplit(ctx, deviceUUID, qFn, maxAgg)
+		}
+		return qFn(ctx, deviceUUID)
 	case biz.HygonGPUDevice:
 		query = fmt.Sprintf("avg(dcu_temp{device_id=\"%s\"})", deviceUUID)
 	default:
@@ -425,7 +453,14 @@ func (s *MetricsGenerator) memoryTemperature(ctx context.Context, provider, devi
 	case biz.CambriconGPUDevice:
 		query = fmt.Sprintf("avg(mlu_memory_temperature{uuid=\"%s\"})", deviceUUID)
 	case biz.AscendGPUDevice:
-		query = fmt.Sprintf("avg(npu_chip_info_temperature{vdie_id=\"%s\"})", deviceUUID)
+		qFn := func(_ context.Context, uuid string) (float32, error) {
+			q := fmt.Sprintf("avg(npu_chip_info_temperature{vdie_id=\"%s\"})", uuid)
+			return s.queryInstantVal(ctx, q)
+		}
+		if strings.Contains(deviceUUID, "---") {
+			return queryAscend910CSplit(ctx, deviceUUID, qFn, maxAgg)
+		}
+		return qFn(ctx, deviceUUID)
 	default:
 		return 0, errors.New("provider not exists")
 	}
@@ -441,7 +476,14 @@ func (s *MetricsGenerator) gpuPower(ctx context.Context, provider, deviceUUID st
 	case biz.CambriconGPUDevice:
 		query = fmt.Sprintf("avg(mlu_power_usage{uuid=\"%s\"})", deviceUUID)
 	case biz.AscendGPUDevice:
-		query = fmt.Sprintf("avg(npu_chip_info_power{vdie_id=\"%s\"})", deviceUUID)
+		qFn := func(_ context.Context, uuid string) (float32, error) {
+			q := fmt.Sprintf("avg(npu_chip_info_power{vdie_id=\"%s\"})", uuid)
+			return s.queryInstantVal(ctx, q)
+		}
+		if strings.Contains(deviceUUID, "---") {
+			return queryAscend910CSplit(ctx, deviceUUID, qFn, sumAgg)
+		}
+		return qFn(ctx, deviceUUID)
 	case biz.HygonGPUDevice:
 		query = fmt.Sprintf("avg(dcu_power_usage{device_id=\"%s\"})", deviceUUID)
 	default:
@@ -471,7 +513,14 @@ func (s *MetricsGenerator) fanSpeed(ctx context.Context, provider, deviceUUID st
 	case biz.CambriconGPUDevice:
 		query = fmt.Sprintf("avg(mlu_fan_speed{uuid=\"%s\"})", deviceUUID)
 	case biz.AscendGPUDevice:
-		query = fmt.Sprintf("avg(npu_chip_link_speed{vdie_id=\"%s\"})", deviceUUID)
+		qFn := func(_ context.Context, uuid string) (float32, error) {
+			q := fmt.Sprintf("avg(npu_chip_link_speed{vdie_id=\"%s\"})", uuid)
+			return s.queryInstantVal(ctx, q)
+		}
+		if strings.Contains(deviceUUID, "---") {
+			return queryAscend910CSplit(ctx, deviceUUID, qFn, maxAgg)
+		}
+		return qFn(ctx, deviceUUID)
 	default:
 		return 0, errors.New("provider not exists")
 	}
@@ -490,7 +539,12 @@ func (s *MetricsGenerator) queryDeviceAdditional(ctx context.Context, provider, 
 	case biz.NvidiaGPUDevice:
 		query = fmt.Sprintf("DCGM_FI_DEV_POWER_USAGE{UUID=\"%s\"}", deviceUUID)
 	case biz.AscendGPUDevice:
-		query = fmt.Sprintf("npu_chip_info_power{vdie_id=\"%s\"}", deviceUUID)
+		// 对 Ascend910C 合并设备，只用第一个 chip 的 UUID 查询
+		queryUUID := deviceUUID
+		if strings.Contains(deviceUUID, "---") {
+			queryUUID = strings.Split(deviceUUID, "---")[0]
+		}
+		query = fmt.Sprintf("npu_chip_info_power{vdie_id=\"%s\"}", queryUUID)
 	case biz.CambriconGPUDevice:
 		query = fmt.Sprintf("mlu_power_usage{uuid=\"%s\"}", deviceUUID)
 	case biz.HygonGPUDevice:
@@ -540,4 +594,54 @@ func (s *MetricsGenerator) systemComponentHealth(ctx context.Context, componentT
 		return 0, errors.New("componentType not exists")
 	}
 	return s.queryInstantVal(ctx, query)
+}
+
+// queryAscend910CSplit 对 Ascend910C 合并设备的 deviceUUID（含 "---"）拆成两个 chip 分别查询并聚合。
+// 不含 "---" 的直接转发到 querySingle。
+var (
+	sumAgg = func(vals []float32) float32 {
+		var s float32
+		for _, v := range vals {
+			s += v
+		}
+		return s
+	}
+	maxAgg = func(vals []float32) float32 {
+		if len(vals) == 0 {
+			return 0
+		}
+		max := vals[0]
+		for _, v := range vals[1:] {
+			if v > max {
+				max = v
+			}
+		}
+		return max
+	}
+	avgAgg = func(vals []float32) float32 {
+		if len(vals) == 0 {
+			return 0
+		}
+		var s float32
+		for _, v := range vals {
+			s += v
+		}
+		return s / float32(len(vals))
+	}
+)
+
+func queryAscend910CSplit(ctx context.Context, deviceUUID string, querySingle func(ctx context.Context, uuid string) (float32, error), aggregate func(values []float32) float32) (float32, error) {
+	if !strings.Contains(deviceUUID, "---") {
+		return querySingle(ctx, deviceUUID)
+	}
+	parts := strings.Split(deviceUUID, "---")
+	vals := make([]float32, 0, len(parts))
+	for _, part := range parts {
+		v, err := querySingle(ctx, part)
+		if err != nil {
+			return 0, fmt.Errorf("asc910C split query failed for %s: %w", part, err)
+		}
+		vals = append(vals, v)
+	}
+	return aggregate(vals), nil
 }
