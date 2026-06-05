@@ -16,6 +16,7 @@ import (
 	"vgpu/internal/provider/mlu"
 	"vgpu/internal/service"
 
+	"github.com/go-kratos/kratos/v2/log"
 	"github.com/google/wire"
 )
 
@@ -185,7 +186,6 @@ func (s *MetricsGenerator) GenerateContainerMetrics(ctx context.Context) error {
 
 				// 查询任务在当前设备下的算力利用率
 				taskCoreUsed, err := s.taskCoreUsed(ctx, provider, c.Namespace, c.PodName, c.Name, c.PodUID, device.Id)
-				fmt.Printf("GenerateContainerMetrics taskCoreUsed=%.2f, core=%d", taskCoreUsed, core)
 				if err == nil {
 					used := float64(0)
 					util := float64(0)
@@ -204,9 +204,14 @@ func (s *MetricsGenerator) GenerateContainerMetrics(ctx context.Context) error {
 						util = roundToOneDecimal(100 * float64(taskCoreUsed) / float64(core))
 					default:
 					}
-					if cardCoreUtil, err := s.deviceCoreUtil(ctx, provider, device.Id); err == nil && used != 0 && cardCoreUtil > 95 {
-						used = float64(cardCoreUtil) / 100 * float64(core)
-						util = float64(cardCoreUtil)
+					// cardCoreUtil > 95 修正：当卡级利用率极高时，用卡级值代替容器级值
+					// 但 Ascend vnpu 路径已有精确的容器级指标（vnpu_pod_aicore_utilization），
+					// 跳过卡级修正以避免覆盖精确的 vnpu 数值。
+					if provider != biz.AscendGPUDevice {
+						if cardCoreUtil, err := s.deviceCoreUtil(ctx, provider, device.Id); err == nil && used != 0 && cardCoreUtil > 95 {
+							used = float64(cardCoreUtil) / 100 * float64(core)
+							util = float64(cardCoreUtil)
+						}
 					}
 					HamiContainerCoreUsed.WithLabelValues(device.NodeName, provider, device.Type, device.Id, c.PodName, c.Name, c.Namespace).Set(used)
 					HamiContainerCoreUtil.WithLabelValues(device.NodeName, provider, device.Type, device.Id, c.PodName, c.Name, c.Namespace).Set(util)
@@ -216,6 +221,8 @@ func (s *MetricsGenerator) GenerateContainerMetrics(ctx context.Context) error {
 					case biz.CambriconGPUDevice:
 						taskMemoryUsed = float32((taskMemoryUsed/100)*float32(memory)) * 1024 * 1024
 					case biz.AscendGPUDevice:
+						// taskMemoryUsed already returns MB (vnpu: KB/1024, container: raw MB)
+						// Multiply by 1024*1024 to keep universal /1024/1024 conversion a NOOP
 						taskMemoryUsed = float32(taskMemoryUsed) * 1024 * 1024
 					case biz.MetaxGPUDevice:
 						taskMemoryUsed = float32(taskMemoryUsed) * 1024
@@ -232,17 +239,26 @@ func (s *MetricsGenerator) GenerateContainerMetrics(ctx context.Context) error {
 	return nil
 }
 
-func (s *MetricsGenerator) queryInstantVal(ctx context.Context, query string) (float32, error) {
+// queryInstantValWithData returns (value, hasData, error).
+// hasData=true means the query returned at least one data point.
+// This is needed to distinguish "metric returned 0" from "no data exists".
+func (s *MetricsGenerator) queryInstantValWithData(ctx context.Context, query string) (float32, bool, error) {
 	res, err := s.monitorService.QueryInstant(ctx, &pb.QueryInstantRequest{
 		Query: query,
 	})
 	if err != nil {
-		return 0, err
+		return 0, false, err
 	}
 	if len(res.Data) > 0 {
-		return res.Data[0].Value, nil
+		return res.Data[0].Value, true, nil
 	}
-	return 0, nil
+	return 0, false, nil
+}
+
+// queryInstantVal is a convenience wrapper discarding the hasData flag.
+func (s *MetricsGenerator) queryInstantVal(ctx context.Context, query string) (float32, error) {
+	v, _, err := s.queryInstantValWithData(ctx, query)
+	return v, err
 }
 
 // 卡显存已使用量
@@ -356,6 +372,16 @@ func (s *MetricsGenerator) taskCoreUsed(ctx context.Context, provider, namespace
 	case biz.CambriconGPUDevice:
 		query = fmt.Sprintf("avg(mlu_utilization * on(uuid) group_right mlu_container{namespace=\"%s\",pod=\"%s\",container=\"%s\",type=\"mlu370.smlu.vcore\"})", namespace, pod, container)
 	case biz.AscendGPUDevice:
+		// Try vnpu pod-level metric first (910B/A3 split scenarios)
+		vnpuQuery := fmt.Sprintf("avg(vnpu_pod_aicore_utilization{exported_namespace=\"%s\", pod_name=\"%s\", container_name=\"%s\"})", namespace, pod, container)
+		if v, hasData, err := s.queryInstantValWithData(ctx, vnpuQuery); err == nil && hasData {
+			// vnpu query has data (even if 0 — pod just started), return directly
+			return v, nil
+		} else if err != nil {
+			log.Warnf("vnpu query failed, fallback to container metric: provider=%s namespace=%s pod=%s container=%s err=%v", provider, namespace, pod, container, err)
+		} else {
+			log.Infof("vnpu query returned no data, fallback to container metric: provider=%s namespace=%s pod=%s container=%s", provider, namespace, pod, container)
+		}
 		query = fmt.Sprintf("avg(container_npu_utilization{exported_namespace=\"%s\", pod_name=\"%s\", container_name=\"%s\"})", namespace, pod, container)
 	case biz.HygonGPUDevice:
 		// vdcu
@@ -392,6 +418,16 @@ func (s *MetricsGenerator) taskMemoryUsed(ctx context.Context, provider, namespa
 	case biz.CambriconGPUDevice:
 		query = fmt.Sprintf("avg(mlu_memory_utilization * on(uuid) group_right mlu_container{namespace=\"%s\",pod=\"%s\",container=\"%s\",type=\"mlu370.smlu.vmemory\"})", namespace, pod, container)
 	case biz.AscendGPUDevice:
+		// Try vnpu pod-level metric first (910B/A3 split scenarios)
+		// vnpu_pod_used_memory unit: KB, convert to MB by /1024
+		vnpuQuery := fmt.Sprintf("avg(vnpu_pod_used_memory{exported_namespace=\"%s\", pod_name=\"%s\", container_name=\"%s\"})", namespace, pod, container)
+		if v, hasData, err := s.queryInstantValWithData(ctx, vnpuQuery); err == nil && hasData {
+			return v / 1024, nil // KB → MB
+		} else if err != nil {
+			log.Warnf("vnpu query failed, fallback to container metric: provider=%s namespace=%s pod=%s container=%s err=%v", provider, namespace, pod, container, err)
+		} else {
+			log.Infof("vnpu query returned no data, fallback to container metric: provider=%s namespace=%s pod=%s container=%s", provider, namespace, pod, container)
+		}
 		query = fmt.Sprintf("avg(container_npu_used_memory{exported_namespace=\"%s\", pod_name=\"%s\", container_name=\"%s\"})", namespace, pod, container)
 	case biz.HygonGPUDevice:
 		// vdcu
