@@ -14,6 +14,7 @@ import (
 	"vgpu/internal/provider/metax"
 	"vgpu/internal/provider/mlu"
 	"vgpu/internal/provider/nvidia"
+	"vgpu/internal/provider/ppu"
 
 	"github.com/go-kratos/kratos/v2/log"
 	corev1 "k8s.io/api/core/v1"
@@ -46,6 +47,7 @@ func NewNodeRepo(data *Data, nodeSelectors map[string]string, logger log.Logger)
 			ascend.NewAscend(data.promCl, log.NewHelper(logger), nodeSelectors[biz.AscendGPUDevice]),
 			hygon.NewHygon(data.promCl, log.NewHelper(logger), nodeSelectors[biz.HygonGPUDevice]),
 			metax.NewMetax(data.promCl, log.NewHelper(logger), nodeSelectors[biz.MetaxGPUDevice]),
+			ppu.NewPPU(nodeSelectors[biz.AlibabaPPUDevice]),
 		},
 	}
 	nodeRepo.init()
@@ -97,6 +99,7 @@ func (r *nodeRepo) updateLocalNodes() {
 						Driver:   device.Driver,
 					})
 				}
+				r.log.Infof("updateLocalNodes: provider=%s node=%s matched=%d devices=%d", p.GetProvider(), node.Name, len(nodes), len(devices))
 			}
 		}
 		r.nodes = n

@@ -24,6 +24,7 @@ const (
 	HygonGPUDevice      = "DCU"
 	CambriconGPUDevice  = "MLU"
 	MetaxSGPUDevice     = "Metax-SGPU"
+	AlibabaPPUDevice    = "PPU"
 
 	DsmluProfileAndInstance = "CAMBRICON_DSMLU_PROFILE_INSTANCE"
 
@@ -309,7 +310,7 @@ func DecodePodDevices(pod *corev1.Pod, log *log.Helper) (PodDevices, error) {
 				continue
 			}
 			pd[devType] = append(pd[devType], cd)
-		case NvidiaGPUDevice, MetaxSGPUDevice:
+		case NvidiaGPUDevice, MetaxSGPUDevice, AlibabaPPUDevice:
 			for i, s := range strings.Split(str, OnePodMultiContainerSplitSymbol) {
 				if s == "" {
 					continue

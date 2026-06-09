@@ -18,6 +18,9 @@ package util
 import (
 	"github.com/go-kratos/kratos/v2/log"
 	"testing"
+
+	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 var inRequestDevices map[string]string
@@ -342,6 +345,157 @@ func Test_DecodePodDevices(t *testing.T) {
 			//got, gotErr := DecodePodDevices(test.args.checklist, test.args.annos, )
 			//assert.DeepEqual(t, test.wantErr, gotErr)
 			//assert.DeepEqual(t, test.want, got)
+		})
+	}
+}
+
+func TestPPU_DecodePodDevices(t *testing.T) {
+	// PPU annotation 格式与 NVIDIA 兼容，解码后应得到正确的 ContainerDevice 列表
+	old := SupportDevices["PPU"]
+	SupportDevices["PPU"] = "hami.io/ppu-devices-allocated"
+	defer func() { SupportDevices["PPU"] = old }()
+
+	tests := []struct {
+		name       string
+		annos      map[string]string
+		containers int
+		want       PodDevices
+		wantErr    bool
+	}{
+		{
+			name: "single container with one PPU device",
+			annos: map[string]string{
+				SupportDevices["PPU"]: "GPU-ppu-uuid-1234,PPU,32768,50:",
+			},
+			containers: 1,
+			want: PodDevices{
+				"PPU": {
+					{
+						{
+							Idx:       0,
+							UUID:      "GPU-ppu-uuid-1234",
+							Type:      "PPU",
+							Usedmem:   32768,
+							Usedcores: 50,
+						},
+					},
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "single container with two PPU devices",
+			annos: map[string]string{
+				SupportDevices["PPU"]: "GPU-ppu-uuid-1111,PPU,32768,50:GPU-ppu-uuid-2222,PPU,32768,50:",
+			},
+			containers: 1,
+			want: PodDevices{
+				"PPU": {
+					{
+						{
+							Idx:       0,
+							UUID:      "GPU-ppu-uuid-1111",
+							Type:      "PPU",
+							Usedmem:   32768,
+							Usedcores: 50,
+						},
+						{
+							Idx:       1,
+							UUID:      "GPU-ppu-uuid-2222",
+							Type:      "PPU",
+							Usedmem:   32768,
+							Usedcores: 50,
+						},
+					},
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "two containers with dedicated devices",
+			annos: map[string]string{
+				SupportDevices["PPU"]: "GPU-aaa,PPU,32768,50:;GPU-bbb,PPU,16384,25:GPU-ccc,PPU,16384,25:",
+			},
+			containers: 2,
+			want: PodDevices{
+				"PPU": {
+					{
+						{
+							Idx:       0,
+							UUID:      "GPU-aaa",
+							Type:      "PPU",
+							Usedmem:   32768,
+							Usedcores: 50,
+						},
+					},
+					{
+						{
+							Idx:       0,
+							UUID:      "GPU-bbb",
+							Type:      "PPU",
+							Usedmem:   16384,
+							Usedcores: 25,
+						},
+						{
+							Idx:       1,
+							UUID:      "GPU-ccc",
+							Type:      "PPU",
+							Usedmem:   16384,
+							Usedcores: 25,
+						},
+					},
+				},
+			},
+			wantErr: false,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			containers := make([]corev1.Container, test.containers)
+			for i := 0; i < test.containers; i++ {
+				containers[i] = corev1.Container{}
+			}
+			pod := &corev1.Pod{
+				ObjectMeta: metav1.ObjectMeta{
+					Annotations: test.annos,
+				},
+				Spec: corev1.PodSpec{
+					Containers: containers,
+				},
+			}
+			got, err := DecodePodDevices(pod, log.NewHelper(log.DefaultLogger))
+			if test.wantErr {
+				if err == nil {
+					t.Errorf("DecodePodDevices() expected error but got nil")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("DecodePodDevices() unexpected error = %v", err)
+			}
+			ppuGot, ok := got["PPU"]
+			if !ok {
+				t.Fatalf("DecodePodDevices() missing \"PPU\" key in result")
+			}
+			ppuWant := test.want["PPU"]
+			if len(ppuGot) != len(ppuWant) {
+				t.Fatalf("DecodePodDevices() PPU container count = %d, want %d", len(ppuGot), len(ppuWant))
+			}
+			for ci := range ppuWant {
+				if len(ppuGot[ci]) != len(ppuWant[ci]) {
+					t.Fatalf("container[%d] device count = %d, want %d", ci, len(ppuGot[ci]), len(ppuWant[ci]))
+				}
+				for di := range ppuWant[ci] {
+					if ppuGot[ci][di].UUID != ppuWant[ci][di].UUID ||
+						ppuGot[ci][di].Type != ppuWant[ci][di].Type ||
+						ppuGot[ci][di].Usedmem != ppuWant[ci][di].Usedmem ||
+						ppuGot[ci][di].Usedcores != ppuWant[ci][di].Usedcores {
+						t.Errorf("container[%d] device[%d] = %+v, want %+v",
+							ci, di, ppuGot[ci][di], ppuWant[ci][di])
+					}
+				}
+			}
 		})
 	}
 }

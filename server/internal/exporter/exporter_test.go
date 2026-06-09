@@ -442,24 +442,20 @@ func TestAscend910C_GenerateContainerMetrics_Merged_MatchAlias(t *testing.T) {
 			{Metric: model.Metric{"id": "1", "vdie_id": model.LabelValue(chipUUID36Card0Chip1)}, Value: 1, Timestamp: now},
 		}),
 		// taskCoreUsed query — pod+container based, not vdie_id based
-		fmt.Sprintf("avg(container_npu_utilization{exported_namespace=\"default\", pod_name=\"ascend-pod\", container_name=\"inference\"})"):
-			buildPromVectorResponse([]model.Sample{
-				{Value: 60, Timestamp: now},
-			}),
+		fmt.Sprintf("avg(container_npu_utilization{exported_namespace=\"default\", pod_name=\"ascend-pod\", container_name=\"inference\"})"): buildPromVectorResponse([]model.Sample{
+			{Value: 60, Timestamp: now},
+		}),
 		// deviceMemTotal for core_util calculation
-		"avg(npu_chip_info_hbm_total_memory{vdie_id=\"" + chipUUID36Card0Chip0 + "\"})":
-			buildPromVectorResponse([]model.Sample{
-				{Value: 65536, Timestamp: now},
-			}),
-		"avg(npu_chip_info_hbm_total_memory{vdie_id=\"" + chipUUID36Card0Chip1 + "\"})":
-			buildPromVectorResponse([]model.Sample{
-				{Value: 65536, Timestamp: now},
-			}),
+		"avg(npu_chip_info_hbm_total_memory{vdie_id=\"" + chipUUID36Card0Chip0 + "\"})": buildPromVectorResponse([]model.Sample{
+			{Value: 65536, Timestamp: now},
+		}),
+		"avg(npu_chip_info_hbm_total_memory{vdie_id=\"" + chipUUID36Card0Chip1 + "\"})": buildPromVectorResponse([]model.Sample{
+			{Value: 65536, Timestamp: now},
+		}),
 		// taskMemoryUsed query
-		fmt.Sprintf("avg(container_npu_used_memory{exported_namespace=\"default\", pod_name=\"ascend-pod\", container_name=\"inference\"})"):
-			buildPromVectorResponse([]model.Sample{
-				{Value: 2048, Timestamp: now},
-			}),
+		fmt.Sprintf("avg(container_npu_used_memory{exported_namespace=\"default\", pod_name=\"ascend-pod\", container_name=\"inference\"})"): buildPromVectorResponse([]model.Sample{
+			{Value: 2048, Timestamp: now},
+		}),
 	}
 
 	mux := http.NewServeMux()
@@ -520,10 +516,9 @@ func TestAscend_vnpu_taskCoreUsed_Success(t *testing.T) {
 
 	mockResponses := map[string]string{
 		// vnpu query succeeds
-		fmt.Sprintf("avg(vnpu_pod_aicore_utilization{exported_namespace=\"%s\", pod_name=\"%s\", container_name=\"%s\"})", "ns-1", "pod-1", "ctr"):
-			buildPromVectorResponse([]model.Sample{
-				{Value: 45, Timestamp: now},
-			}),
+		fmt.Sprintf("avg(vnpu_pod_aicore_utilization{exported_namespace=\"%s\", pod_name=\"%s\", container_name=\"%s\"})", "ns-1", "pod-1", "ctr"): buildPromVectorResponse([]model.Sample{
+			{Value: 45, Timestamp: now},
+		}),
 		totalQ: buildPromVectorResponse([]model.Sample{
 			{Value: 65536, Timestamp: now},
 		}),
@@ -583,10 +578,9 @@ func TestAscend_vnpu_taskCoreUsed_Zero_NoFallback(t *testing.T) {
 
 	mockResponses := map[string]string{
 		// vnpu query returns 0 (pod just started)
-		fmt.Sprintf("avg(vnpu_pod_aicore_utilization{exported_namespace=\"%s\", pod_name=\"%s\", container_name=\"%s\"})", "ns-1", "pod-1", "ctr"):
-			buildPromVectorResponse([]model.Sample{
-				{Value: 0, Timestamp: now},
-			}),
+		fmt.Sprintf("avg(vnpu_pod_aicore_utilization{exported_namespace=\"%s\", pod_name=\"%s\", container_name=\"%s\"})", "ns-1", "pod-1", "ctr"): buildPromVectorResponse([]model.Sample{
+			{Value: 0, Timestamp: now},
+		}),
 		totalQ: buildPromVectorResponse([]model.Sample{
 			{Value: 65536, Timestamp: now},
 		}),
@@ -645,13 +639,11 @@ func TestAscend_vnpu_taskCoreUsed_Empty_Fallback(t *testing.T) {
 
 	mockResponses := map[string]string{
 		// vnpu query returns empty result
-		fmt.Sprintf("avg(vnpu_pod_aicore_utilization{exported_namespace=\"%s\", pod_name=\"%s\", container_name=\"%s\"})", "ns-1", "pod-1", "ctr"):
-			buildPromVectorResponse(nil), // empty result
+		fmt.Sprintf("avg(vnpu_pod_aicore_utilization{exported_namespace=\"%s\", pod_name=\"%s\", container_name=\"%s\"})", "ns-1", "pod-1", "ctr"): buildPromVectorResponse(nil), // empty result
 		// container query (fallback) has data
-		fmt.Sprintf("avg(container_npu_utilization{exported_namespace=\"%s\", pod_name=\"%s\", container_name=\"%s\"})", "ns-1", "pod-1", "ctr"):
-			buildPromVectorResponse([]model.Sample{
-				{Value: 50, Timestamp: now},
-			}),
+		fmt.Sprintf("avg(container_npu_utilization{exported_namespace=\"%s\", pod_name=\"%s\", container_name=\"%s\"})", "ns-1", "pod-1", "ctr"): buildPromVectorResponse([]model.Sample{
+			{Value: 50, Timestamp: now},
+		}),
 		totalQ: buildPromVectorResponse([]model.Sample{
 			{Value: 65536, Timestamp: now},
 		}),
@@ -710,15 +702,13 @@ func TestAscend_vnpu_taskMemoryUsed_Success_KBtoMB(t *testing.T) {
 
 	mockResponses := map[string]string{
 		// vnpu memory: 11264 KB = 11 MB
-		fmt.Sprintf("avg(vnpu_pod_used_memory{exported_namespace=\"%s\", pod_name=\"%s\", container_name=\"%s\"})", "ns-1", "pod-1", "ctr"):
-			buildPromVectorResponse([]model.Sample{
-				{Value: 11264, Timestamp: now}, // KB
-			}),
+		fmt.Sprintf("avg(vnpu_pod_used_memory{exported_namespace=\"%s\", pod_name=\"%s\", container_name=\"%s\"})", "ns-1", "pod-1", "ctr"): buildPromVectorResponse([]model.Sample{
+			{Value: 11264, Timestamp: now}, // KB
+		}),
 		// deviceCoreUtil for the cardCoreUtil correction (non-95, won't trigger)
-		fmt.Sprintf("avg(npu_chip_info_utilization{vdie_id=\"%s\"})", "npu-uuid-1"):
-			buildPromVectorResponse([]model.Sample{
-				{Value: 30, Timestamp: now},
-			}),
+		fmt.Sprintf("avg(npu_chip_info_utilization{vdie_id=\"%s\"})", "npu-uuid-1"): buildPromVectorResponse([]model.Sample{
+			{Value: 30, Timestamp: now},
+		}),
 		totalQ: buildPromVectorResponse([]model.Sample{
 			{Value: 65536, Timestamp: now},
 		}),
@@ -777,10 +767,9 @@ func TestAscend_vnpu_taskMemoryUsed_Zero_NoFallback(t *testing.T) {
 
 	mockResponses := map[string]string{
 		// vnpu memory: 0 KB (just started)
-		fmt.Sprintf("avg(vnpu_pod_used_memory{exported_namespace=\"%s\", pod_name=\"%s\", container_name=\"%s\"})", "ns-1", "pod-1", "ctr"):
-			buildPromVectorResponse([]model.Sample{
-				{Value: 0, Timestamp: now}, // KB
-			}),
+		fmt.Sprintf("avg(vnpu_pod_used_memory{exported_namespace=\"%s\", pod_name=\"%s\", container_name=\"%s\"})", "ns-1", "pod-1", "ctr"): buildPromVectorResponse([]model.Sample{
+			{Value: 0, Timestamp: now}, // KB
+		}),
 		totalQ: buildPromVectorResponse([]model.Sample{
 			{Value: 65536, Timestamp: now},
 		}),
@@ -889,13 +878,11 @@ func TestAscend_vnpu_taskMemoryUsed_Empty_Fallback(t *testing.T) {
 
 	mockResponses := map[string]string{
 		// vnpu query: empty result
-		fmt.Sprintf("avg(vnpu_pod_used_memory{exported_namespace=\"%s\", pod_name=\"%s\", container_name=\"%s\"})", "ns-1", "pod-1", "ctr"):
-			buildPromVectorResponse(nil),
+		fmt.Sprintf("avg(vnpu_pod_used_memory{exported_namespace=\"%s\", pod_name=\"%s\", container_name=\"%s\"})", "ns-1", "pod-1", "ctr"): buildPromVectorResponse(nil),
 		// container query succeeds: 2048 MB
-		fmt.Sprintf("avg(container_npu_used_memory{exported_namespace=\"%s\", pod_name=\"%s\", container_name=\"%s\"})", "ns-1", "pod-1", "ctr"):
-			buildPromVectorResponse([]model.Sample{
-				{Value: 2048, Timestamp: now}, // MB
-			}),
+		fmt.Sprintf("avg(container_npu_used_memory{exported_namespace=\"%s\", pod_name=\"%s\", container_name=\"%s\"})", "ns-1", "pod-1", "ctr"): buildPromVectorResponse([]model.Sample{
+			{Value: 2048, Timestamp: now}, // MB
+		}),
 		totalQ: buildPromVectorResponse([]model.Sample{
 			{Value: 65536, Timestamp: now},
 		}),
@@ -1024,5 +1011,329 @@ func TestAscend910C_GenerateDeviceMetrics_QueryFails_Graceful(t *testing.T) {
 	// Device metrics should still be present with 0 values
 	if got := readMetricAnyLabels("hami_vgpu_count", map[string]string{"deviceuuid": mergedUUID}); got != 1 {
 		t.Errorf("hami_vgpu_count should be 1 even on empty query, got %v", got)
+	}
+}
+
+// ---- PPU Device Metrics Tests ----
+// PPU uses DCGM-compatible metric names identical to NVIDIA.
+
+func TestPPU_GenerateDeviceMetrics_MemoryAndCore(t *testing.T) {
+	uuid := "GPU-ppu-0001-1234-5678-9abcdef01234"
+	devices := []*biz.DeviceInfo{
+		{
+			Id:       uuid,
+			AliasId:  uuid,
+			Count:    1,
+			Devmem:   98304,
+			Devcore:  100,
+			Type:     "PPU",
+			NodeName: "ppu-node-1",
+			Provider: "PPU",
+			Health:   true,
+		},
+	}
+	containers := []*biz.Container{}
+
+	now := model.Now()
+	memUsedQ := fmt.Sprintf("avg(DCGM_FI_DEV_FB_USED{UUID=\"%s\"})", uuid)
+	coreUtilQ := fmt.Sprintf("DCGM_FI_DEV_GPU_UTIL{UUID=\"%s\"}", uuid)
+
+	mockResponses := map[string]string{
+		memUsedQ: buildPromVectorResponse([]model.Sample{
+			{Metric: model.Metric{"UUID": model.LabelValue(uuid)}, Value: 45000, Timestamp: now},
+		}),
+		coreUtilQ: buildPromVectorResponse([]model.Sample{
+			{Value: 35, Timestamp: now},
+		}),
+	}
+
+	mux := http.NewServeMux()
+	mux.Handle("/api/v1/query", &mockPromHandler{responses: mockResponses})
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	gen := newTestMetricsGenerator(t, server.URL, containers, devices)
+	resetTestMetrics()
+
+	err := gen.GenerateMetrics(context.Background())
+	if err != nil {
+		t.Fatalf("GenerateMetrics failed: %v", err)
+	}
+
+	if got := readMetricAnyLabels("hami_memory_used", map[string]string{"deviceuuid": uuid}); got != 45000 {
+		t.Errorf("hami_memory_used: want 45000, got %v", got)
+	}
+	if got := readMetricAnyLabels("hami_core_used", map[string]string{"deviceuuid": uuid}); got != 35 {
+		t.Errorf("hami_core_used: want 35, got %v", got)
+	}
+	if got := readMetricAnyLabels("hami_core_util", map[string]string{"deviceuuid": uuid}); got != 35 {
+		t.Errorf("hami_core_util: want 35, got %v", got)
+	}
+	if got := readMetricAnyLabels("hami_vgpu_count", map[string]string{"deviceuuid": uuid}); got != 1 {
+		t.Errorf("hami_vgpu_count: want 1, got %v", got)
+	}
+}
+
+func TestPPU_GenerateDeviceMetrics_TempPowerHealth(t *testing.T) {
+	uuid := "GPU-ppu-0002-1234-5678-9abcdef01235"
+	devices := []*biz.DeviceInfo{
+		{
+			Id:       uuid,
+			AliasId:  uuid,
+			Count:    1,
+			Devmem:   98304,
+			Devcore:  100,
+			Type:     "PPU",
+			NodeName: "ppu-node-1",
+			Provider: "PPU",
+			Health:   true,
+		},
+	}
+	containers := []*biz.Container{}
+
+	now := model.Now()
+	tempQ := fmt.Sprintf("avg(DCGM_FI_DEV_GPU_TEMP{UUID=\"%s\"})", uuid)
+	memTempQ := fmt.Sprintf("avg(DCGM_FI_DEV_MEMORY_TEMP{UUID=\"%s\"})", uuid)
+	powerQ := fmt.Sprintf("avg(DCGM_FI_DEV_POWER_USAGE{UUID=\"%s\"})", uuid)
+	xidQ := fmt.Sprintf("avg(DCGM_FI_DEV_XID_ERRORS{UUID=\"%s\"})", uuid)
+	additionalQ := fmt.Sprintf("DCGM_FI_DEV_POWER_USAGE{UUID=\"%s\"}", uuid)
+
+	mockResponses := map[string]string{
+		tempQ: buildPromVectorResponse([]model.Sample{
+			{Value: 72, Timestamp: now},
+		}),
+		memTempQ: buildPromVectorResponse([]model.Sample{
+			{Value: 58, Timestamp: now},
+		}),
+		powerQ: buildPromVectorResponse([]model.Sample{
+			{
+				Metric: model.Metric{
+					"UUID":   model.LabelValue(uuid),
+					"device": "ppu0",
+				},
+				Value: 280, Timestamp: now,
+			},
+		}),
+		additionalQ: buildPromVectorResponse([]model.Sample{
+			{
+				Metric: model.Metric{
+					"UUID":   model.LabelValue(uuid),
+					"device": "ppu0",
+				},
+				Value: 280, Timestamp: now,
+			},
+		}),
+		xidQ: buildPromVectorResponse([]model.Sample{
+			{Value: 0, Timestamp: now},
+		}),
+	}
+
+	mux := http.NewServeMux()
+	mux.Handle("/api/v1/query", &mockPromHandler{responses: mockResponses})
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	gen := newTestMetricsGenerator(t, server.URL, containers, devices)
+	resetTestMetrics()
+
+	err := gen.GenerateMetrics(context.Background())
+	if err != nil {
+		t.Fatalf("GenerateMetrics failed: %v", err)
+	}
+
+	if got := readMetricAnyLabels("hami_device_temperature", map[string]string{"deviceuuid": uuid}); got != 72 {
+		t.Errorf("hami_device_temperature: want 72, got %v", got)
+	}
+	if got := readMetricAnyLabels("hami_device_memory_temperature", map[string]string{"deviceuuid": uuid}); got != 58 {
+		t.Errorf("hami_device_memory_temperature: want 58, got %v", got)
+	}
+	if got := readMetricAnyLabels("hami_device_power", map[string]string{"deviceuuid": uuid}); got != 280 {
+		t.Errorf("hami_device_power: want 280, got %v", got)
+	}
+	// 验证 driver_version 标签
+	if got := readMetricAnyLabels("hami_device_power", map[string]string{
+		"deviceuuid": uuid, "driver_version": "暂无",
+	}); got != 280 {
+		t.Errorf("hami_device_power with driver_version=暂无: want 280, got %v", got)
+	}
+	if got := readMetricAnyLabels("hami_device_hardware_health", map[string]string{"deviceuuid": uuid}); got != 0 {
+		t.Errorf("hami_device_hardware_health: want 0, got %v", got)
+	}
+}
+
+func TestPPU_GenerateContainerMetrics_CoreMemory(t *testing.T) {
+	uuid := "GPU-ppu-container-test-uuid"
+	devices := []*biz.DeviceInfo{
+		{
+			Id:       uuid,
+			AliasId:  uuid,
+			Count:    1,
+			Devmem:   98304,
+			Devcore:  100,
+			Type:     "PPU",
+			NodeName: "ppu-node-1",
+			Provider: "PPU",
+			Health:   true,
+		},
+	}
+	containers := []*biz.Container{
+		{
+			Name:      "inference",
+			PodName:   "ppu-pod",
+			Namespace: "default",
+			PodUID:    "pod-ppu-1",
+			NodeName:  "ppu-node-1",
+			ContainerDevices: biz.ContainerDevices{
+				{UUID: uuid, Type: "PPU", Usedmem: 32768, Usedcores: 50},
+			},
+		},
+	}
+
+	now := model.Now()
+	coreQuery := fmt.Sprintf("DCGM_FI_DEV_GPU_UTIL{UUID=\"%s\"}", uuid)
+	memQuery := fmt.Sprintf("avg(DCGM_FI_DEV_FB_USED{UUID=\"%s\"})", uuid)
+
+	mockResponses := map[string]string{
+		coreQuery: buildPromVectorResponse([]model.Sample{
+			{Value: 12, Timestamp: now}, // GPU_UTIL = 12%
+		}),
+		memQuery: buildPromVectorResponse([]model.Sample{
+			{Value: 2, Timestamp: now}, // FB_USED = 2 MiB
+		}),
+	}
+
+	mux := http.NewServeMux()
+	mux.Handle("/api/v1/query", &mockPromHandler{responses: mockResponses})
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	gen := newTestMetricsGenerator(t, server.URL, containers, devices)
+	resetTestMetrics()
+
+	err := gen.GenerateContainerMetrics(context.Background())
+	if err != nil {
+		t.Fatalf("GenerateContainerMetrics failed: %v", err)
+	}
+
+	if got := readMetricAnyLabels("hami_container_vgpu_allocated", map[string]string{
+		"container_name": "inference", "pod_name": "ppu-pod", "namespace_name": "default",
+	}); got != 1 {
+		t.Errorf("hami_container_vgpu_allocated: want 1, got %v", got)
+	}
+	if got := readMetricAnyLabels("hami_container_vmemory_allocated", map[string]string{
+		"container_name": "inference", "pod_name": "ppu-pod", "namespace_name": "default",
+	}); got != 32768 {
+		t.Errorf("hami_container_vmemory_allocated: want 32768, got %v", got)
+	}
+	// GPU_UTIL = 12%, so core_used = 12
+	if got := readMetricAnyLabels("hami_container_core_used", map[string]string{
+		"pod_name": "ppu-pod", "container_name": "inference", "namespace_name": "default",
+	}); got != 12 {
+		t.Errorf("hami_container_core_used: want 12, got %v", got)
+	}
+	// roundToOneDecimal(100 * 12 / 50) = roundToOneDecimal(24) = 24
+	if got := readMetricAnyLabels("hami_container_core_util", map[string]string{
+		"pod_name": "ppu-pod", "container_name": "inference", "namespace_name": "default",
+	}); got != 24 {
+		t.Errorf("hami_container_core_util: want 24, got %v", got)
+	}
+	// FB_USED = 2 MiB, ×1024×1024 → bytes, /1024/1024 → 2
+	if got := readMetricAnyLabels("hami_container_memory_used", map[string]string{
+		"pod_name": "ppu-pod", "container_name": "inference", "namespace_name": "default",
+	}); got != 2 {
+		t.Errorf("hami_container_memory_used: want 2, got %v", got)
+	}
+	// roundToOneDecimal(100 * 2 / 32768) = roundToOneDecimal(0.006) = 0
+	if got := readMetricAnyLabels("hami_container_memory_util", map[string]string{
+		"pod_name": "ppu-pod", "container_name": "inference", "namespace_name": "default",
+	}); got != 0 {
+		t.Errorf("hami_container_memory_util: want 0, got %v", got)
+	}
+}
+
+// Verify queryDeviceAdditional uses DCGM_FI_DEV_POWER_USAGE and extracts DeviceNo from device label
+func TestPPU_QueryDeviceAdditional(t *testing.T) {
+	uuid := "GPU-driver-test-uuid"
+	now := model.Now()
+	additionalQ := fmt.Sprintf("DCGM_FI_DEV_POWER_USAGE{UUID=\"%s\"}", uuid)
+
+	mockResponses := map[string]string{
+		additionalQ: buildPromVectorResponse([]model.Sample{
+			{
+				Metric: model.Metric{
+					"UUID":      model.LabelValue(uuid),
+					"device":    "ppu0",
+					"modelName": "PPU-ZW610E",
+					"Hostname":  "ppu01",
+				},
+				Value: 68.02, Timestamp: now,
+			},
+		}),
+	}
+
+	mux := http.NewServeMux()
+	mux.Handle("/api/v1/query", &mockPromHandler{responses: mockResponses})
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	gen := newTestMetricsGenerator(t, server.URL, nil, nil)
+
+	info, err := gen.queryDeviceAdditional(context.Background(), "PPU", uuid)
+	if err != nil {
+		t.Fatalf("queryDeviceAdditional failed: %v", err)
+	}
+	if info.DriverVersion != "暂无" {
+		t.Errorf("DriverVersion: want %q, got %q", "暂无", info.DriverVersion)
+	}
+	if info.DeviceNo != "ppu0" {
+		t.Errorf("DeviceNo: want ppu0, got %q", info.DeviceNo)
+	}
+}
+
+// Verify PPU fanSpeed returns gracefully (fan not supported by PPU DCGM)
+func TestPPU_FanSpeedUnsupported(t *testing.T) {
+	uuid := "GPU-fan-test-uuid"
+	devices := []*biz.DeviceInfo{
+		{
+			Id: uuid, AliasId: uuid,
+			Count: 1, Devmem: 98304, Devcore: 100,
+			Type: "PPU", NodeName: "ppu-node-1", Provider: "PPU", Health: true,
+		},
+	}
+	containers := []*biz.Container{}
+
+	now := model.Now()
+	memUsedQ := fmt.Sprintf("avg(DCGM_FI_DEV_FB_USED{UUID=\"%s\"})", uuid)
+	memFreeQ := fmt.Sprintf("avg(DCGM_FI_DEV_FB_FREE{UUID=\"%s\"})", uuid)
+	// Fan query returns empty — no DCGM_FI_DEV_FAN_SPEED support in PPU
+	fanQ := fmt.Sprintf("avg(DCGM_FI_DEV_FAN_SPEED{UUID=\"%s\"})", uuid)
+
+	mockResponses := map[string]string{
+		memUsedQ: buildPromVectorResponse([]model.Sample{
+			{Metric: model.Metric{"UUID": model.LabelValue(uuid)}, Value: 10000, Timestamp: now},
+		}),
+		memFreeQ: buildPromVectorResponse([]model.Sample{
+			{Metric: model.Metric{"UUID": model.LabelValue(uuid)}, Value: 88304, Timestamp: now},
+		}),
+		fanQ: buildPromVectorResponse(nil), // no data
+	}
+
+	mux := http.NewServeMux()
+	mux.Handle("/api/v1/query", &mockPromHandler{responses: mockResponses})
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	gen := newTestMetricsGenerator(t, server.URL, containers, devices)
+	resetTestMetrics()
+
+	err := gen.GenerateMetrics(context.Background())
+	if err != nil {
+		t.Fatalf("GenerateMetrics failed: %v", err)
+	}
+
+	// Fan speed metric should NOT be set for PPU (unsupported)
+	// hami_memory_used should still work
+	if got := readMetricAnyLabels("hami_memory_used", map[string]string{"deviceuuid": uuid}); got != 10000 {
+		t.Errorf("hami_memory_used: want 10000, got %v", got)
 	}
 }

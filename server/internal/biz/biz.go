@@ -12,9 +12,10 @@ var ProviderSet = wire.NewSet(
 )
 
 const (
-	NvidiaGPUDevice = "NVIDIA"
-	HygonGPUDevice  = "DCU"
-	AscendGPUDevice = "Ascend"
+	NvidiaGPUDevice  = "NVIDIA"
+	HygonGPUDevice   = "DCU"
+	AscendGPUDevice  = "Ascend"
+	AlibabaPPUDevice = "PPU"
 
 	CambriconGPUDevice = "MLU"
 	MetaxGPUDevice     = "Metax-SGPU"

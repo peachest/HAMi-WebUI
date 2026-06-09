@@ -13,6 +13,7 @@ node_selectors:
   DCU: dcu=on
   MLU: mlu=on
   NVIDIA: gpu=on
+  PPU: ppu=on
 enable_metrics_cache: false
 exporter_concurrency_limit: 16
 metrics_generate_interval: 15s

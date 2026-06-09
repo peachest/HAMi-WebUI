@@ -65,8 +65,11 @@ func NewMetricsGenerator(
 
 func (s *MetricsGenerator) GenerateMetrics(ctx context.Context) error {
 	reset()                         // 重置所有指标缓存值
+	log.Infof("GenerateMetrics: start device metrics generation")
 	s.GenerateDeviceMetrics(ctx)    // 卡维度指标
+	log.Infof("GenerateMetrics: start container metrics generation")
 	s.GenerateContainerMetrics(ctx) // 任务维度指标
+	log.Infof("GenerateMetrics: completed")
 	return nil
 }
 
@@ -75,6 +78,10 @@ func (s *MetricsGenerator) GenerateDeviceMetrics(ctx context.Context) error {
 	deviceInfos, err := s.nodeUsecase.ListAllDevices(ctx)
 	if err != nil {
 		return err
+	}
+	log.Infof("GenerateDeviceMetrics: total devices=%d", len(deviceInfos))
+	for _, d := range deviceInfos {
+		log.Infof("GenerateDeviceMetrics: device node=%s provider=%s id=%s type=%s", d.NodeName, d.Provider, d.Id, d.Type)
 	}
 	g, _ := errgroup.WithContext(ctx)
 	g.SetLimit(s.concurrencyLimit)
@@ -147,6 +154,7 @@ func (s *MetricsGenerator) GenerateContainerMetrics(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	log.Infof("GenerateContainerMetrics: devices=%d containers=%d", len(deviceInfos), len(containers))
 	g, _ := errgroup.WithContext(ctx)
 	g.SetLimit(s.concurrencyLimit)
 	for _, d := range deviceInfos {
@@ -162,6 +170,7 @@ func (s *MetricsGenerator) GenerateContainerMetrics(ctx context.Context) error {
 					if device.AliasId != "" && !device.MatchAlias(cd.UUID) {
 						continue
 					}
+					log.Infof("GenerateContainerMetrics: MATCH device=%s container=%s pod=%s namespace=%s cd.UUID=%s", device.Id, c.Name, c.PodName, c.Namespace, cd.UUID)
 					vGPU = vGPU + 1
 					core = core + cd.Usedcores
 					memory = memory + cd.Usedmem
@@ -191,6 +200,9 @@ func (s *MetricsGenerator) GenerateContainerMetrics(ctx context.Context) error {
 					util := float64(0)
 					switch provider {
 					case biz.NvidiaGPUDevice:
+						used = float64(taskCoreUsed)
+						util = roundToOneDecimal(100 * float64(taskCoreUsed) / float64(core))
+					case biz.AlibabaPPUDevice:
 						used = float64(taskCoreUsed)
 						util = roundToOneDecimal(100 * float64(taskCoreUsed) / float64(core))
 					case biz.CambriconGPUDevice:
@@ -223,6 +235,9 @@ func (s *MetricsGenerator) GenerateContainerMetrics(ctx context.Context) error {
 					case biz.AscendGPUDevice:
 						// taskMemoryUsed already returns MB (vnpu: KB/1024, container: raw MB)
 						// Multiply by 1024*1024 to keep universal /1024/1024 conversion a NOOP
+						taskMemoryUsed = float32(taskMemoryUsed) * 1024 * 1024
+					case biz.AlibabaPPUDevice:
+						// DCGM_FI_DEV_FB_USED unit is MiB, convert to bytes to match universal /1024/1024 conversion
 						taskMemoryUsed = float32(taskMemoryUsed) * 1024 * 1024
 					case biz.MetaxGPUDevice:
 						taskMemoryUsed = float32(taskMemoryUsed) * 1024
@@ -267,6 +282,8 @@ func (s *MetricsGenerator) deviceMemUsed(ctx context.Context, provider, deviceUU
 	switch provider {
 	case biz.NvidiaGPUDevice:
 		query = fmt.Sprintf("avg(DCGM_FI_DEV_FB_USED{UUID=\"%s\"})", deviceUUID)
+	case biz.AlibabaPPUDevice:
+		query = fmt.Sprintf("avg(DCGM_FI_DEV_FB_USED{UUID=\"%s\"})", deviceUUID)
 	case biz.CambriconGPUDevice:
 		query = fmt.Sprintf("avg(mlu_memory_used{uuid=\"%s\"})", deviceUUID)
 	case biz.AscendGPUDevice:
@@ -300,6 +317,8 @@ func (s *MetricsGenerator) deviceMemTotal(ctx context.Context, provider, deviceU
 	query := ""
 	switch provider {
 	case biz.NvidiaGPUDevice:
+		query = fmt.Sprintf("avg(DCGM_FI_DEV_FB_FREE{UUID=\"%s\"})+avg(DCGM_FI_DEV_FB_USED{UUID=\"%s\"})", deviceUUID, deviceUUID)
+	case biz.AlibabaPPUDevice:
 		query = fmt.Sprintf("avg(DCGM_FI_DEV_FB_FREE{UUID=\"%s\"})+avg(DCGM_FI_DEV_FB_USED{UUID=\"%s\"})", deviceUUID, deviceUUID)
 	case biz.CambriconGPUDevice:
 		query = fmt.Sprintf("avg(mlu_memory_total{uuid=\"%s\"})", deviceUUID)
@@ -337,6 +356,10 @@ func (s *MetricsGenerator) deviceCoreUtil(ctx context.Context, provider, deviceU
 		// query = fmt.Sprintf("avg(avg_over_time(DCGM_FI_DEV_GPU_UTIL{UUID=\"%s\"}[1m]))", deviceUUID)
 		query = fmt.Sprintf("DCGM_FI_DEV_GPU_UTIL{UUID=\"%s\"}", deviceUUID)
 		// query = fmt.Sprintf("(%s * (sum_over_time(%s[5m:]) / count_over_time(( %s !=0)[5m:])) / %s) > 0 or %s", queryTemplate, queryTemplate, queryTemplate, queryTemplate, queryTemplate)
+	case biz.AlibabaPPUDevice:
+		// query = fmt.Sprintf("avg(avg_over_time(DCGM_FI_DEV_GPU_UTIL{UUID=\"%s\"}[1m]))", deviceUUID)
+		query = fmt.Sprintf("DCGM_FI_DEV_GPU_UTIL{UUID=\"%s\"}", deviceUUID)
+		// query = fmt.Sprintf("(%s * (sum_over_time(%s[5m:]) / count_over_time(( %s !=0)[5m:])) / %s) > 0 or %s", queryTemplate, queryTemplate, queryTemplate, queryTemplate, queryTemplate)
 	case biz.CambriconGPUDevice:
 		query = fmt.Sprintf("avg(mlu_utilization{uuid=\"%s\"})", deviceUUID)
 	case biz.AscendGPUDevice:
@@ -369,6 +392,8 @@ func (s *MetricsGenerator) taskCoreUsed(ctx context.Context, provider, namespace
 		queryTemplate := fmt.Sprintf("Device_utilization_desc_of_container{deviceuuid=\"%s\", podnamespace=\"%s\", podname=\"%s\", ctrname=\"%s\"}", deviceUUID, namespace, pod, container)
 		query = fmt.Sprintf("sum_over_time(%s[1m]) == 0 or (sum_over_time(%s[10m:]) / count_over_time(( %s !=0)[10m:])) ", queryTemplate, queryTemplate, queryTemplate)
 		// query = queryTemplate
+	case biz.AlibabaPPUDevice:
+		query = fmt.Sprintf("DCGM_FI_DEV_GPU_UTIL{UUID=\"%s\"}", deviceUUID)
 	case biz.CambriconGPUDevice:
 		query = fmt.Sprintf("avg(mlu_utilization * on(uuid) group_right mlu_container{namespace=\"%s\",pod=\"%s\",container=\"%s\",type=\"mlu370.smlu.vcore\"})", namespace, pod, container)
 	case biz.AscendGPUDevice:
@@ -415,6 +440,8 @@ func (s *MetricsGenerator) taskMemoryUsed(ctx context.Context, provider, namespa
 	switch provider {
 	case biz.NvidiaGPUDevice:
 		query = fmt.Sprintf("avg(vGPU_device_memory_usage_in_bytes{deviceuuid=\"%s\", podnamespace=\"%s\", podname=\"%s\", ctrname=\"%s\"})", deviceUUID, namespace, pod, container)
+	case biz.AlibabaPPUDevice:
+		query = fmt.Sprintf("avg(DCGM_FI_DEV_FB_USED{UUID=\"%s\"})", deviceUUID)
 	case biz.CambriconGPUDevice:
 		query = fmt.Sprintf("avg(mlu_memory_utilization * on(uuid) group_right mlu_container{namespace=\"%s\",pod=\"%s\",container=\"%s\",type=\"mlu370.smlu.vmemory\"})", namespace, pod, container)
 	case biz.AscendGPUDevice:
@@ -461,6 +488,8 @@ func (s *MetricsGenerator) gpuTemperature(ctx context.Context, provider, deviceU
 	switch provider {
 	case biz.NvidiaGPUDevice:
 		query = fmt.Sprintf("avg(DCGM_FI_DEV_GPU_TEMP{UUID=\"%s\"})", deviceUUID)
+	case biz.AlibabaPPUDevice:
+		query = fmt.Sprintf("avg(DCGM_FI_DEV_GPU_TEMP{UUID=\"%s\"})", deviceUUID)
 	case biz.CambriconGPUDevice:
 		query = fmt.Sprintf("avg(mlu_temperature{uuid=\"%s\"})", deviceUUID)
 	case biz.AscendGPUDevice:
@@ -486,6 +515,8 @@ func (s *MetricsGenerator) memoryTemperature(ctx context.Context, provider, devi
 	switch provider {
 	case biz.NvidiaGPUDevice:
 		query = fmt.Sprintf("avg(DCGM_FI_DEV_MEMORY_TEMP{UUID=\"%s\"})", deviceUUID)
+	case biz.AlibabaPPUDevice:
+		query = fmt.Sprintf("avg(DCGM_FI_DEV_MEMORY_TEMP{UUID=\"%s\"})", deviceUUID)
 	case biz.CambriconGPUDevice:
 		query = fmt.Sprintf("avg(mlu_memory_temperature{uuid=\"%s\"})", deviceUUID)
 	case biz.AscendGPUDevice:
@@ -508,6 +539,8 @@ func (s *MetricsGenerator) gpuPower(ctx context.Context, provider, deviceUUID st
 	query := ""
 	switch provider {
 	case biz.NvidiaGPUDevice:
+		query = fmt.Sprintf("avg(DCGM_FI_DEV_POWER_USAGE{UUID=\"%s\"})", deviceUUID)
+	case biz.AlibabaPPUDevice:
 		query = fmt.Sprintf("avg(DCGM_FI_DEV_POWER_USAGE{UUID=\"%s\"})", deviceUUID)
 	case biz.CambriconGPUDevice:
 		query = fmt.Sprintf("avg(mlu_power_usage{uuid=\"%s\"})", deviceUUID)
@@ -534,6 +567,8 @@ func (s *MetricsGenerator) gpuHardwareHealth(ctx context.Context, provider, devi
 	switch provider {
 	case biz.NvidiaGPUDevice:
 		query = fmt.Sprintf("avg(DCGM_FI_DEV_XID_ERRORS{UUID=\"%s\"})", deviceUUID)
+	case biz.AlibabaPPUDevice:
+		query = fmt.Sprintf("avg(DCGM_FI_DEV_XID_ERRORS{UUID=\"%s\"})", deviceUUID)
 	default:
 		return 0, nil
 	}
@@ -545,6 +580,11 @@ func (s *MetricsGenerator) fanSpeed(ctx context.Context, provider, deviceUUID st
 	query := ""
 	switch provider {
 	case biz.NvidiaGPUDevice:
+		query = fmt.Sprintf("avg(DCGM_FI_DEV_FAN_SPEED{UUID=\"%s\"})", deviceUUID)
+	case biz.AlibabaPPUDevice:
+		// Note: PPU DCGM does not support FAN_SPEED (Field Id 155 = POWER_USAGE in PPU).
+		// This query will return empty, and queryInstantVal will return 0 with nil error.
+		// This means fanSpeed will return 0 (no error) and the metric won't be set.
 		query = fmt.Sprintf("avg(DCGM_FI_DEV_FAN_SPEED{UUID=\"%s\"})", deviceUUID)
 	case biz.CambriconGPUDevice:
 		query = fmt.Sprintf("avg(mlu_fan_speed{uuid=\"%s\"})", deviceUUID)
@@ -574,6 +614,8 @@ func (s *MetricsGenerator) queryDeviceAdditional(ctx context.Context, provider, 
 	switch provider {
 	case biz.NvidiaGPUDevice:
 		query = fmt.Sprintf("DCGM_FI_DEV_POWER_USAGE{UUID=\"%s\"}", deviceUUID)
+	case biz.AlibabaPPUDevice:
+		query = fmt.Sprintf("DCGM_FI_DEV_POWER_USAGE{UUID=\"%s\"}", deviceUUID)
 	case biz.AscendGPUDevice:
 		// 对 Ascend910C 合并设备，只用第一个 chip 的 UUID 查询
 		queryUUID := deviceUUID
@@ -601,6 +643,9 @@ func (s *MetricsGenerator) queryDeviceAdditional(ctx context.Context, provider, 
 		switch provider {
 		case biz.NvidiaGPUDevice:
 			info.DriverVersion = metric["DCGM_FI_DRIVER_VERSION"]
+			info.DeviceNo = metric["device"]
+		case biz.AlibabaPPUDevice:
+			info.DriverVersion = "暂无"
 			info.DeviceNo = metric["device"]
 		case biz.CambriconGPUDevice:
 			info.DriverVersion = metric["driver"]
