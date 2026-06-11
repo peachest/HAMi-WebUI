@@ -18,7 +18,7 @@ REF=$(if $(CI_COMMIT_REF_NAME),$(CI_COMMIT_REF_NAME),$(shell git rev-parse --abb
 .PHONY: install-deps
 install-deps:
 	export GOPROXY=http://172.16.251.11:1111,direct
-	go install github.com/google/wire/cmd/wire@v0.6.0
+	go install github.com/google/wire/cmd/wire@v0.7.0
 	go install github.com/envoyproxy/protoc-gen-validate@v1.2.1
 	go install github.com/go-kratos/kratos/cmd/kratos/v2@latest
 	go install google.golang.org/protobuf/cmd/protoc-gen-go@latest

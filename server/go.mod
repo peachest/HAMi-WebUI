@@ -5,14 +5,14 @@ go 1.26.4
 require (
 	github.com/go-kratos/kratos/v2 v2.7.3
 	github.com/go-kratos/swagger-api v1.0.1
-	github.com/google/wire v0.6.0
+	github.com/google/wire v0.7.0
 	github.com/gookit/goutil v0.6.15
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.20.0
 	github.com/jinzhu/copier v0.4.0
 	github.com/prometheus/client_golang v1.19.1
 	github.com/prometheus/common v0.55.0
 	go.uber.org/automaxprocs v1.5.3
-	golang.org/x/sync v0.7.0
+	golang.org/x/sync v0.8.0
 	google.golang.org/genproto/googleapis/api v0.0.0-20240528184218-531527333157
 	google.golang.org/grpc v1.64.0
 	google.golang.org/protobuf v1.34.2
@@ -22,10 +22,7 @@ require (
 	sigs.k8s.io/controller-runtime v0.18.3
 )
 
-require (
-	golang.org/x/tools v0.23.0 // indirect
-	sigs.k8s.io/yaml v1.4.0 // indirect
-)
+require sigs.k8s.io/yaml v1.4.0 // indirect
 
 require (
 	github.com/beorn7/perks v1.0.1 // indirect
@@ -62,11 +59,11 @@ require (
 	github.com/prometheus/procfs v0.15.1 // indirect
 	github.com/rakyll/statik v0.1.7 // indirect
 	github.com/spf13/pflag v1.0.5 // indirect
-	golang.org/x/net v0.27.0 // indirect
+	golang.org/x/net v0.28.0 // indirect
 	golang.org/x/oauth2 v0.21.0 // indirect
-	golang.org/x/sys v0.22.0 // indirect
-	golang.org/x/term v0.22.0 // indirect
-	golang.org/x/text v0.16.0 // indirect
+	golang.org/x/sys v0.23.0 // indirect
+	golang.org/x/term v0.23.0 // indirect
+	golang.org/x/text v0.17.0 // indirect
 	golang.org/x/time v0.5.0 // indirect
 	google.golang.org/genproto v0.0.0-20230803162519-f966b187b2e5 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20240521202816-d264139d666e // indirect
