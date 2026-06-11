@@ -1,6 +1,6 @@
 module vgpu
 
-go 1.22.3
+go 1.26.4
 
 require (
 	github.com/go-kratos/kratos/v2 v2.7.3

@@ -1,4 +1,4 @@
-image: harbor.transwarp.io/aip/base/golang-gitlab-builder:1.23-ubuntu24.04
+image: harbor.transwarp.io/aip-mm/base/golang-gitlab-builder:1.26-ubuntu24.04
 
 stages:
   - build

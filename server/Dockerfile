@@ -1,4 +1,4 @@
-FROM --platform=${BUILDPLATFORM} harbor.transwarp.io/aip/base/golang-builder:1.24-ubuntu24.04 AS builder
+FROM --platform=${BUILDPLATFORM} harbor.transwarp.io/aip-mm/base/golang-builder:1.26-ubuntu24.04 AS builder
 ARG TARGETARCH
 ARG ARCH=${TARGETARCH}
 
@@ -21,7 +21,7 @@ RUN sed -i 's|http://mirrors.aliyun.com/ubuntu/|https://mirrors.ustc.edu.cn/ubun
 
 RUN PATH=/root/go/bin:$PATH make build
 
-FROM harbor.transwarp.io/aip/base/alpine-runner:3.19
+FROM harbor.transwarp.io/aip-mm/base/alpine-runner:3.19
 ARG TARGETARCH
 
 ARG ARCH=${TARGETARCH}
