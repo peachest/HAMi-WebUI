@@ -64,9 +64,9 @@ func NewMetricsGenerator(
 }
 
 func (s *MetricsGenerator) GenerateMetrics(ctx context.Context) error {
-	reset()                         // 重置所有指标缓存值
+	reset() // 重置所有指标缓存值
 	log.Infof("GenerateMetrics: start device metrics generation")
-	s.GenerateDeviceMetrics(ctx)    // 卡维度指标
+	s.GenerateDeviceMetrics(ctx) // 卡维度指标
 	log.Infof("GenerateMetrics: start container metrics generation")
 	s.GenerateContainerMetrics(ctx) // 任务维度指标
 	log.Infof("GenerateMetrics: completed")
@@ -159,6 +159,36 @@ func (s *MetricsGenerator) GenerateContainerMetrics(ctx context.Context) error {
 	g.SetLimit(s.concurrencyLimit)
 	for _, d := range deviceInfos {
 		device := d
+		// === Ascend pre-calculation: card-level metrics + total allocation ===
+		// ponytail: proportional split — npu-exporter doesn't support vnpu for 910B/A3 yet.
+		// Card-level metrics are divided across containers by Usedmem ratio.
+		var ascendCardUtil float32
+		var ascendCardMemUsedMB float32
+		var ascendTotalMemoryOnCard int32
+		var ascendCardQueriesOK bool
+		if strings.HasPrefix(device.Provider, biz.AscendGPUDevice) {
+			var cdMemBytes float32
+			var ascendCardUtilErr, ascendCardMemErr error
+			ascendCardUtil, ascendCardUtilErr = s.deviceCoreUtil(ctx, device.Provider, device.Id)
+			cdMemBytes, ascendCardMemErr = s.deviceMemUsed(ctx, device.Provider, device.Id)
+			// ascendCardQueriesOK guards the proportional-split branch below.
+			// If queries failed the goroutine falls back to taskCoreUsed/MemoryUsed,
+			// matching the existing codebase pattern (silent skip on err != nil).
+			ascendCardQueriesOK = ascendCardUtilErr == nil && ascendCardMemErr == nil
+			if ascendCardQueriesOK && cdMemBytes > 0 {
+				ascendCardMemUsedMB = cdMemBytes / 1024 / 1024
+			}
+			for _, c := range containers {
+				for _, cd := range c.ContainerDevices {
+					if device.AliasId != "" && !device.MatchAlias(cd.UUID) {
+						continue
+					}
+					if strings.HasPrefix(cd.Type, biz.AscendGPUDevice) {
+						ascendTotalMemoryOnCard += cd.Usedmem
+					}
+				}
+			}
+		}
 		for _, cont := range containers {
 			c := cont
 			g.Go(func() error {
@@ -194,8 +224,18 @@ func (s *MetricsGenerator) GenerateContainerMetrics(ctx context.Context) error {
 				HamiContainerVcoreAllocated.WithLabelValues(device.NodeName, provider, device.Type, device.Id, c.PodName, c.Name, c.Namespace, fmt.Sprintf("%s:%s", c.Name, c.PodUID)).Set(float64(core))
 
 				// 查询任务在当前设备下的算力利用率
-				taskCoreUsed, err := s.taskCoreUsed(ctx, provider, c.Namespace, c.PodName, c.Name, c.PodUID, device.Id)
-				if err == nil {
+				// Ascend: use proportional split from pre-calculated card-level metrics
+				var taskCoreUsed float32
+				var taskCoreUsedErr error
+				if provider == biz.AscendGPUDevice && ascendCardQueriesOK && ascendTotalMemoryOnCard > 0 {
+					ratio := float32(memory) / float32(ascendTotalMemoryOnCard)
+					taskCoreUsed = ascendCardUtil * ratio
+					log.Infof("GenerateContainerMetrics: ascend proportional-split device=%s container=%s pod=%s ratio=%.2f cardUtil=%.2f coreUsed=%.2f",
+						device.Id, c.Name, c.PodName, ratio, ascendCardUtil, taskCoreUsed)
+				} else {
+					taskCoreUsed, taskCoreUsedErr = s.taskCoreUsed(ctx, provider, c.Namespace, c.PodName, c.Name, c.PodUID, device.Id)
+				}
+				if taskCoreUsedErr == nil {
 					used := float64(0)
 					util := float64(0)
 					switch provider {
@@ -228,7 +268,15 @@ func (s *MetricsGenerator) GenerateContainerMetrics(ctx context.Context) error {
 					HamiContainerCoreUsed.WithLabelValues(device.NodeName, provider, device.Type, device.Id, c.PodName, c.Name, c.Namespace).Set(used)
 					HamiContainerCoreUtil.WithLabelValues(device.NodeName, provider, device.Type, device.Id, c.PodName, c.Name, c.Namespace).Set(util)
 				}
-				if taskMemoryUsed, err := s.taskMemoryUsed(ctx, provider, c.Namespace, c.PodName, c.Name, c.PodUID, device.Id); err == nil {
+				var taskMemoryUsed float32
+				var taskMemoryUsedErr error
+				if provider == biz.AscendGPUDevice && ascendCardQueriesOK && ascendTotalMemoryOnCard > 0 {
+					ratio := float32(memory) / float32(ascendTotalMemoryOnCard)
+					taskMemoryUsed = ascendCardMemUsedMB * ratio
+				} else {
+					taskMemoryUsed, taskMemoryUsedErr = s.taskMemoryUsed(ctx, provider, c.Namespace, c.PodName, c.Name, c.PodUID, device.Id)
+				}
+				if taskMemoryUsedErr == nil {
 					switch provider {
 					case biz.CambriconGPUDevice:
 						taskMemoryUsed = float32((taskMemoryUsed/100)*float32(memory)) * 1024 * 1024
