@@ -491,8 +491,9 @@ func TestAscend910C_GenerateContainerMetrics_Merged_MatchAlias(t *testing.T) {
 
 // ---- Ascend vnpu Container Metrics Tests ----
 
-func TestAscend_vnpu_taskCoreUsed_Success(t *testing.T) {
-	// Vnpu query returns 45%, should not fallback to container
+func TestAscend910B_Proportional_SingleContainer_Success(t *testing.T) {
+	// Single container on card — proportional split with ratio=1.0
+	// Should use pre-calculated card-level metrics (deviceCoreUtil).
 	devices := []*biz.DeviceInfo{
 		{
 			Id: "npu-uuid-1", AliasId: "npu-uuid-1",
@@ -513,17 +514,17 @@ func TestAscend_vnpu_taskCoreUsed_Success(t *testing.T) {
 	now := model.Now()
 	totalQ := fmt.Sprintf("avg(npu_chip_info_hbm_total_memory{vdie_id=\"%s\"})", "npu-uuid-1")
 	coreUtilQ := fmt.Sprintf("avg(npu_chip_info_utilization{vdie_id=\"%s\"})", "npu-uuid-1")
+	memUsedQ := fmt.Sprintf("avg(npu_chip_info_hbm_used_memory{vdie_id=\"%s\"})", "npu-uuid-1")
 
 	mockResponses := map[string]string{
-		// vnpu query succeeds
-		fmt.Sprintf("avg(vnpu_pod_aicore_utilization{exported_namespace=\"%s\", pod_name=\"%s\", container_name=\"%s\"})", "ns-1", "pod-1", "ctr"): buildPromVectorResponse([]model.Sample{
-			{Value: 45, Timestamp: now},
-		}),
 		totalQ: buildPromVectorResponse([]model.Sample{
 			{Value: 65536, Timestamp: now},
 		}),
 		coreUtilQ: buildPromVectorResponse([]model.Sample{
 			{Value: 30, Timestamp: now},
+		}),
+		memUsedQ: buildPromVectorResponse([]model.Sample{
+			{Value: 15000000000, Timestamp: now},
 		}),
 	}
 
@@ -539,23 +540,27 @@ func TestAscend_vnpu_taskCoreUsed_Success(t *testing.T) {
 		t.Fatalf("GenerateContainerMetrics failed: %v", err)
 	}
 
-	// core_used = 45 (vnpu value), core_util = 100 * 45 / 17 ≈ 264.7
+	// Pre-calculated: cardUtil=30, totalMemoryOnCard=11264, ratio=1.0
+	// taskCoreUsed = 30 * 1.0 = 30
 	// Adjusted core=17 (11264/65536*100)
+	// core_util = 100 * 30 / 17 ≈ 176.5
+	wantUsed := float64(30)
+	wantUtil := roundToOneDecimal(100 * float64(30) / float64(17))
 	if got := readMetricAnyLabels("hami_container_core_used", map[string]string{
 		"pod_name": "pod-1", "container_name": "ctr", "namespace_name": "ns-1",
-	}); got != 45 {
-		t.Errorf("hami_container_core_used: want 45, got %v", got)
+	}); got != wantUsed {
+		t.Errorf("hami_container_core_used: want %v (cardUtil=30*ratio=1), got %v", wantUsed, got)
 	}
-	wantUtil := roundToOneDecimal(100 * float64(45) / float64(17))
 	if got := readMetricAnyLabels("hami_container_core_util", map[string]string{
 		"pod_name": "pod-1", "container_name": "ctr", "namespace_name": "ns-1",
 	}); !approxEqual(wantUtil, got, 0.1) {
-		t.Errorf("hami_container_core_util: want ~%v (100*45/17), got %v", wantUtil, got)
+		t.Errorf("hami_container_core_util: want ~%v (100*30/17), got %v", wantUtil, got)
 	}
 }
 
-func TestAscend_vnpu_taskCoreUsed_Zero_NoFallback(t *testing.T) {
-	// Vnpu returns 0 (just started), should NOT fallback to container
+func TestAscend910B_Proportional_ZeroFallback_ToCardMetric(t *testing.T) {
+	// Single container on card — cardUtil returns non-zero, should be used
+	// (not 0 from vnpu path which is no longer relevant)
 	devices := []*biz.DeviceInfo{
 		{
 			Id: "npu-uuid-1", AliasId: "npu-uuid-1",
@@ -575,17 +580,17 @@ func TestAscend_vnpu_taskCoreUsed_Zero_NoFallback(t *testing.T) {
 	now := model.Now()
 	totalQ := fmt.Sprintf("avg(npu_chip_info_hbm_total_memory{vdie_id=\"%s\"})", "npu-uuid-1")
 	coreUtilQ := fmt.Sprintf("avg(npu_chip_info_utilization{vdie_id=\"%s\"})", "npu-uuid-1")
+	memUsedQ := fmt.Sprintf("avg(npu_chip_info_hbm_used_memory{vdie_id=\"%s\"})", "npu-uuid-1")
 
 	mockResponses := map[string]string{
-		// vnpu query returns 0 (pod just started)
-		fmt.Sprintf("avg(vnpu_pod_aicore_utilization{exported_namespace=\"%s\", pod_name=\"%s\", container_name=\"%s\"})", "ns-1", "pod-1", "ctr"): buildPromVectorResponse([]model.Sample{
-			{Value: 0, Timestamp: now},
-		}),
 		totalQ: buildPromVectorResponse([]model.Sample{
 			{Value: 65536, Timestamp: now},
 		}),
 		coreUtilQ: buildPromVectorResponse([]model.Sample{
 			{Value: 30, Timestamp: now},
+		}),
+		memUsedQ: buildPromVectorResponse([]model.Sample{
+			{Value: 15000000000, Timestamp: now},
 		}),
 	}
 
@@ -601,16 +606,12 @@ func TestAscend_vnpu_taskCoreUsed_Zero_NoFallback(t *testing.T) {
 		t.Fatalf("GenerateContainerMetrics failed: %v", err)
 	}
 
-	// core_used = 0 (vnpu value retained, not falling back to container which would be >0)
+	// Pre-calculated: cardUtil=30, ratio=1.0 → core_used=30 (not 0)
+	// Adjusted core=17
 	if got := readMetricAnyLabels("hami_container_core_used", map[string]string{
 		"pod_name": "pod-1", "container_name": "ctr", "namespace_name": "ns-1",
-	}); got != 0 {
-		t.Errorf("hami_container_core_used: want 0 (vnpu=0 kept), got %v", got)
-	}
-	if got := readMetricAnyLabels("hami_container_core_util", map[string]string{
-		"pod_name": "pod-1", "container_name": "ctr", "namespace_name": "ns-1",
-	}); got != 0 {
-		t.Errorf("hami_container_core_util: want 0 (vnpu=0 kept), got %v", got)
+	}); got != 30 {
+		t.Errorf("hami_container_core_used: want 30 (cardUtil=30*ratio=1), got %v", got)
 	}
 }
 
@@ -679,211 +680,50 @@ func TestAscend_vnpu_taskCoreUsed_Empty_Fallback(t *testing.T) {
 	}
 }
 
-func TestAscend_vnpu_taskMemoryUsed_Success_KBtoMB(t *testing.T) {
-	// Vnpu query returns 11264 KB = 11 MB, should use vnpu value (no fallback)
+func TestAscend910B_Proportional_MultiContainer_CoreMemory(t *testing.T) {
+	// Two containers with different allocations on same card
+	// ctr-a: 16384 MB (25%), ctr-b: 32768 MB (50%), total=49152 MB
+	// Verify proportional split with unequal allocations
+	deviceUUID := "npu-multi-1"
 	devices := []*biz.DeviceInfo{
 		{
-			Id: "npu-uuid-1", AliasId: "npu-uuid-1",
+			Id: deviceUUID, AliasId: deviceUUID,
 			Count: 1, Devmem: 65536, Devcore: 100,
 			Type: "Ascend910B", NodeName: "node-1", Provider: "Ascend", Health: true,
 		},
 	}
 	containers := []*biz.Container{
 		{
-			Name: "ctr", PodName: "pod-1", Namespace: "ns-1", PodUID: "pod-uid-1", NodeName: "node-1",
+			Name: "ctr-a", PodName: "pod-a", Namespace: "ns-1", PodUID: "pod-uid-a", NodeName: "node-1",
 			ContainerDevices: biz.ContainerDevices{
-				{UUID: "npu-uuid-1", Type: "Ascend910B", Usedmem: 11264, Usedcores: 25},
+				{UUID: deviceUUID, Type: "Ascend910B", Usedmem: 16384, Usedcores: 25},
+			},
+		},
+		{
+			Name: "ctr-b", PodName: "pod-b", Namespace: "ns-1", PodUID: "pod-uid-b", NodeName: "node-1",
+			ContainerDevices: biz.ContainerDevices{
+				{UUID: deviceUUID, Type: "Ascend910B", Usedmem: 32768, Usedcores: 50},
 			},
 		},
 	}
 
 	now := model.Now()
-	totalQ := fmt.Sprintf("avg(npu_chip_info_hbm_total_memory{vdie_id=\"%s\"})", "npu-uuid-1")
+	coreUtilQ := fmt.Sprintf("avg(npu_chip_info_utilization{vdie_id=\"%s\"})", deviceUUID)
+	memUsedQ := fmt.Sprintf("avg(npu_chip_info_hbm_used_memory{vdie_id=\"%s\"})", deviceUUID)
+	memTotalQ := fmt.Sprintf("avg(npu_chip_info_hbm_total_memory{vdie_id=\"%s\"})", deviceUUID)
 
+	// Card util=90, card mem=30000000000 bytes (~28 GB)
+	// totalMemoryOnCard = 16384+32768 = 49152
+	// ctr-a: ratio=16384/49152≈0.333, core_used=90*0.333≈30, mem_used=28610.2*0.333≈9529 MB
+	// ctr-b: ratio=32768/49152≈0.667, core_used=90*0.667≈60, mem_used=28610.2*0.667≈19073 MB
 	mockResponses := map[string]string{
-		// vnpu memory: 11264 KB = 11 MB
-		fmt.Sprintf("avg(vnpu_pod_used_memory{exported_namespace=\"%s\", pod_name=\"%s\", container_name=\"%s\"})", "ns-1", "pod-1", "ctr"): buildPromVectorResponse([]model.Sample{
-			{Value: 11264, Timestamp: now}, // KB
-		}),
-		// deviceCoreUtil for the cardCoreUtil correction (non-95, won't trigger)
-		fmt.Sprintf("avg(npu_chip_info_utilization{vdie_id=\"%s\"})", "npu-uuid-1"): buildPromVectorResponse([]model.Sample{
-			{Value: 30, Timestamp: now},
-		}),
-		totalQ: buildPromVectorResponse([]model.Sample{
-			{Value: 65536, Timestamp: now},
-		}),
-	}
-
-	mux := http.NewServeMux()
-	mux.Handle("/api/v1/query", &mockPromHandler{responses: mockResponses})
-	server := httptest.NewServer(mux)
-	defer server.Close()
-
-	gen := newTestMetricsGenerator(t, server.URL, containers, devices)
-	resetTestMetrics()
-	err := gen.GenerateContainerMetrics(context.Background())
-	if err != nil {
-		t.Fatalf("GenerateContainerMetrics failed: %v", err)
-	}
-
-	// vnpu_pod_used_memory=11264 KB → /1024 → 11 MB
-	// No *1024*1024 NOOP, direct float32(11)
-	// HamiContainerMemoryUsed = 11
-	// HamiContainerMemoryUtil = 100 * 11 / 11264 ≈ 0.1
-	if got := readMetricAnyLabels("hami_container_memory_used", map[string]string{
-		"pod_name": "pod-1", "container_name": "ctr", "namespace_name": "ns-1",
-	}); got != 11 {
-		t.Errorf("hami_container_memory_used: want 11 (MB from vnpu KB/1024), got %v", got)
-	}
-	// util = 100 * 11 / 11264 ≈ 0.097... rounded to 0.1
-	wantUtil := float64(0.1)
-	if got := readMetricAnyLabels("hami_container_memory_util", map[string]string{
-		"pod_name": "pod-1", "container_name": "ctr", "namespace_name": "ns-1",
-	}); !approxEqual(wantUtil, got, 0.05) {
-		t.Errorf("hami_container_memory_util: want ~%v, got %v", wantUtil, got)
-	}
-}
-
-func TestAscend_vnpu_taskMemoryUsed_Zero_NoFallback(t *testing.T) {
-	// Vnpu returns 0 KB, should NOT fallback
-	devices := []*biz.DeviceInfo{
-		{
-			Id: "npu-uuid-1", AliasId: "npu-uuid-1",
-			Count: 1, Devmem: 65536, Devcore: 100,
-			Type: "Ascend910B", NodeName: "node-1", Provider: "Ascend", Health: true,
-		},
-	}
-	containers := []*biz.Container{
-		{
-			Name: "ctr", PodName: "pod-1", Namespace: "ns-1", PodUID: "pod-uid-1", NodeName: "node-1",
-			ContainerDevices: biz.ContainerDevices{
-				{UUID: "npu-uuid-1", Type: "Ascend910B", Usedmem: 11264, Usedcores: 25},
-			},
-		},
-	}
-
-	now := model.Now()
-	totalQ := fmt.Sprintf("avg(npu_chip_info_hbm_total_memory{vdie_id=\"%s\"})", "npu-uuid-1")
-
-	mockResponses := map[string]string{
-		// vnpu memory: 0 KB (just started)
-		fmt.Sprintf("avg(vnpu_pod_used_memory{exported_namespace=\"%s\", pod_name=\"%s\", container_name=\"%s\"})", "ns-1", "pod-1", "ctr"): buildPromVectorResponse([]model.Sample{
-			{Value: 0, Timestamp: now}, // KB
-		}),
-		totalQ: buildPromVectorResponse([]model.Sample{
-			{Value: 65536, Timestamp: now},
-		}),
-	}
-
-	mux := http.NewServeMux()
-	mux.Handle("/api/v1/query", &mockPromHandler{responses: mockResponses})
-	server := httptest.NewServer(mux)
-	defer server.Close()
-
-	gen := newTestMetricsGenerator(t, server.URL, containers, devices)
-	resetTestMetrics()
-	err := gen.GenerateContainerMetrics(context.Background())
-	if err != nil {
-		t.Fatalf("GenerateContainerMetrics failed: %v", err)
-	}
-
-	// vnpu=0 kept, not falling back → memory_used = 0, util = 0
-	if got := readMetricAnyLabels("hami_container_memory_used", map[string]string{
-		"pod_name": "pod-1", "container_name": "ctr", "namespace_name": "ns-1",
-	}); got != 0 {
-		t.Errorf("hami_container_memory_used: want 0 (vnpu=0 kept), got %v", got)
-	}
-	if got := readMetricAnyLabels("hami_container_memory_util", map[string]string{
-		"pod_name": "pod-1", "container_name": "ctr", "namespace_name": "ns-1",
-	}); got != 0 {
-		t.Errorf("hami_container_memory_util: want 0 (vnpu=0 kept), got %v", got)
-	}
-}
-
-func TestAscend_vnpu_taskMemoryUsed_Empty_NoFallbackReturnsZero(t *testing.T) {
-	// Vnpu query returns empty (non-split), fallback to container also returns empty
-	// queryInstantVal returns (0, nil) for empty results, so metric is set to 0
-	devices := []*biz.DeviceInfo{
-		{
-			Id: "npu-uuid-1", AliasId: "npu-uuid-1",
-			Count: 1, Devmem: 65536, Devcore: 100,
-			Type: "Ascend910B", NodeName: "node-1", Provider: "Ascend", Health: true,
-		},
-	}
-	containers := []*biz.Container{
-		{
-			Name: "ctr", PodName: "pod-1", Namespace: "ns-1", PodUID: "pod-uid-1", NodeName: "node-1",
-			ContainerDevices: biz.ContainerDevices{
-				{UUID: "npu-uuid-1", Type: "Ascend910B", Usedmem: 33792, Usedcores: 100},
-			},
-		},
-	}
-
-	now := model.Now()
-	totalQ := fmt.Sprintf("avg(npu_chip_info_hbm_total_memory{vdie_id=\"%s\"})", "npu-uuid-1")
-	coreUtilQ := fmt.Sprintf("avg(npu_chip_info_utilization{vdie_id=\"%s\"})", "npu-uuid-1")
-
-	// Only mock queries we need actual data for.
-	// All other queries will fall through to default empty handler.
-	mockResponses := map[string]string{
-		totalQ: buildPromVectorResponse([]model.Sample{
-			{Value: 65536, Timestamp: now},
-		}),
 		coreUtilQ: buildPromVectorResponse([]model.Sample{
-			{Value: 30, Timestamp: now},
+			{Value: 90, Timestamp: now},
 		}),
-	}
-
-	mux := http.NewServeMux()
-	mux.Handle("/api/v1/query", &mockPromHandler{responses: mockResponses})
-	server := httptest.NewServer(mux)
-	defer server.Close()
-
-	gen := newTestMetricsGenerator(t, server.URL, containers, devices)
-	resetTestMetrics()
-	err := gen.GenerateContainerMetrics(context.Background())
-	if err != nil {
-		t.Fatalf("GenerateContainerMetrics failed: %v", err)
-	}
-
-	// Both vnpu and container return empty → queryInstantVal returns (0, nil)
-	// taskMemoryUsed succeeds with value 0, metric is set to 0
-	if got := readMetricAnyLabels("hami_container_memory_used", map[string]string{
-		"pod_name": "pod-1", "container_name": "ctr", "namespace_name": "ns-1",
-	}); got != 0 {
-		t.Errorf("hami_container_memory_used: want 0 (both empty), got %v", got)
-	}
-}
-
-func TestAscend_vnpu_taskMemoryUsed_Empty_Fallback(t *testing.T) {
-	// Vnpu query returns empty (non-split), fallback to container_npu_used_memory (MB)
-	devices := []*biz.DeviceInfo{
-		{
-			Id: "npu-uuid-1", AliasId: "npu-uuid-1",
-			Count: 1, Devmem: 65536, Devcore: 100,
-			Type: "Ascend910B", NodeName: "node-1", Provider: "Ascend", Health: true,
-		},
-	}
-	containers := []*biz.Container{
-		{
-			Name: "ctr", PodName: "pod-1", Namespace: "ns-1", PodUID: "pod-uid-1", NodeName: "node-1",
-			ContainerDevices: biz.ContainerDevices{
-				{UUID: "npu-uuid-1", Type: "Ascend910B", Usedmem: 16384, Usedcores: 50},
-			},
-		},
-	}
-
-	now := model.Now()
-	totalQ := fmt.Sprintf("avg(npu_chip_info_hbm_total_memory{vdie_id=\"%s\"})", "npu-uuid-1")
-
-	mockResponses := map[string]string{
-		// vnpu query: empty result
-		fmt.Sprintf("avg(vnpu_pod_used_memory{exported_namespace=\"%s\", pod_name=\"%s\", container_name=\"%s\"})", "ns-1", "pod-1", "ctr"): buildPromVectorResponse(nil),
-		// container query succeeds: 2048 MB
-		fmt.Sprintf("avg(container_npu_used_memory{exported_namespace=\"%s\", pod_name=\"%s\", container_name=\"%s\"})", "ns-1", "pod-1", "ctr"): buildPromVectorResponse([]model.Sample{
-			{Value: 2048, Timestamp: now}, // MB
+		memUsedQ: buildPromVectorResponse([]model.Sample{
+			{Value: 30000000000, Timestamp: now},
 		}),
-		totalQ: buildPromVectorResponse([]model.Sample{
+		memTotalQ: buildPromVectorResponse([]model.Sample{
 			{Value: 65536, Timestamp: now},
 		}),
 	}
@@ -895,22 +735,40 @@ func TestAscend_vnpu_taskMemoryUsed_Empty_Fallback(t *testing.T) {
 
 	gen := newTestMetricsGenerator(t, server.URL, containers, devices)
 	resetTestMetrics()
+
 	err := gen.GenerateContainerMetrics(context.Background())
 	if err != nil {
 		t.Fatalf("GenerateContainerMetrics failed: %v", err)
 	}
 
-	// container fallback value: 2048 MB → NOOP removed → HamiContainerMemoryUsed = 2048
-	if got := readMetricAnyLabels("hami_container_memory_used", map[string]string{
-		"pod_name": "pod-1", "container_name": "ctr", "namespace_name": "ns-1",
-	}); got != 2048 {
-		t.Errorf("hami_container_memory_used: want 2048 (fallback MB), got %v", got)
+	labelsA := map[string]string{"pod_name": "pod-a", "container_name": "ctr-a", "namespace_name": "ns-1"}
+	labelsB := map[string]string{"pod_name": "pod-b", "container_name": "ctr-b", "namespace_name": "ns-1"}
+
+	// ctr-a: core_used = 90 * (16384/49152) = 30
+	if got := readMetricAnyLabels("hami_container_core_used", labelsA); !approxEqual(30, got, 1.0) {
+		t.Errorf("ctr-a core_used: want ~30, got %v", got)
 	}
-	// util = 100 * 2048 / 16384 = 12.5
-	if got := readMetricAnyLabels("hami_container_memory_util", map[string]string{
-		"pod_name": "pod-1", "container_name": "ctr", "namespace_name": "ns-1",
-	}); got != 12.5 {
-		t.Errorf("hami_container_memory_util: want 12.5, got %v", got)
+	// ctr-b: core_used = 90 * (32768/49152) = 60
+	if got := readMetricAnyLabels("hami_container_core_used", labelsB); !approxEqual(60, got, 1.0) {
+		t.Errorf("ctr-b core_used: want ~60, got %v", got)
+	}
+
+	// ctr-a: memory_used = 28610.2 * 0.333 = 9529 MB
+	wantMemA := roundToOneDecimal(float64(30000000000) / 1024 / 1024 * float64(16384) / float64(49152))
+	if got := readMetricAnyLabels("hami_container_memory_used", labelsA); !approxEqual(wantMemA, got, 1.0) {
+		t.Errorf("ctr-a memory_used: want ~%v, got %v", wantMemA, got)
+	}
+	// ctr-b: memory_used = 28610.2 * 0.667 = 19073 MB
+	wantMemB := roundToOneDecimal(float64(30000000000) / 1024 / 1024 * float64(32768) / float64(49152))
+	if got := readMetricAnyLabels("hami_container_memory_used", labelsB); !approxEqual(wantMemB, got, 1.0) {
+		t.Errorf("ctr-b memory_used: want ~%v, got %v", wantMemB, got)
+	}
+
+	// Sum of memory should equal full card memory
+	if got := readMetricAnyLabels("hami_container_memory_used", labelsA) + readMetricAnyLabels("hami_container_memory_used", labelsB); !approxEqual(float64(30000000000)/1024/1024, got, 2.0) {
+		t.Errorf("memory_used sum: want ~%v, got %v (sum=%v+%v)", float64(30000000000)/1024/1024, got,
+			readMetricAnyLabels("hami_container_memory_used", labelsA),
+			readMetricAnyLabels("hami_container_memory_used", labelsB))
 	}
 }
 
@@ -1335,5 +1193,251 @@ func TestPPU_FanSpeedUnsupported(t *testing.T) {
 	// hami_memory_used should still work
 	if got := readMetricAnyLabels("hami_memory_used", map[string]string{"deviceuuid": uuid}); got != 10000 {
 		t.Errorf("hami_memory_used: want 10000, got %v", got)
+	}
+}
+
+// ---- Ascend proportional split Container Metrics Tests ----
+
+func TestAscend910B_MultiContainer_ProportionalSplit(t *testing.T) {
+	deviceUUID := "npu-uuid-1"
+	devices := []*biz.DeviceInfo{
+		{
+			Id: deviceUUID, AliasId: deviceUUID,
+			Count: 1, Devmem: 65536, Devcore: 100,
+			Type: "Ascend910B", NodeName: "node-1", Provider: "Ascend", Health: true,
+		},
+	}
+	// Two containers each allocated 16GB on the same card
+	// Usedmem=16384 each, total=32768
+	containers := []*biz.Container{
+		{
+			Name: "ctr-a", PodName: "pod-1", Namespace: "ns-1", PodUID: "pod-uid-1", NodeName: "node-1",
+			ContainerDevices: biz.ContainerDevices{
+				{UUID: deviceUUID, Type: "Ascend910B", Usedmem: 16384, Usedcores: 25},
+			},
+		},
+		{
+			Name: "ctr-b", PodName: "pod-2", Namespace: "ns-1", PodUID: "pod-uid-2", NodeName: "node-1",
+			ContainerDevices: biz.ContainerDevices{
+				{UUID: deviceUUID, Type: "Ascend910B", Usedmem: 16384, Usedcores: 25},
+			},
+		},
+	}
+
+	now := model.Now()
+	// PromQL queries needed:
+	// deviceCoreUtil: avg(npu_chip_info_utilization{vdie_id="<uuid>"})
+	// deviceMemUsed: avg(npu_chip_info_hbm_used_memory{vdie_id="<uuid>"})
+	// deviceMemTotal (for core correction): avg(npu_chip_info_hbm_total_memory{vdie_id="<uuid>"})
+	coreUtilQ := fmt.Sprintf("avg(npu_chip_info_utilization{vdie_id=\"%s\"})", deviceUUID)
+	memUsedQ := fmt.Sprintf("avg(npu_chip_info_hbm_used_memory{vdie_id=\"%s\"})", deviceUUID)
+	memTotalQ := fmt.Sprintf("avg(npu_chip_info_hbm_total_memory{vdie_id=\"%s\"})", deviceUUID)
+
+	// Card util=60%, card mem used=30000000000 bytes (~28 GB)
+	// Each container ratio=16384/32768=0.5
+	// taskCoreUsed=60*0.5=30, taskMemoryUsed=(30000000000/1024/1024)*0.5≈14305 MB
+	// core correction: perc=16384/65536=0.25, core=int32(25)
+	mockResponses := map[string]string{
+		coreUtilQ: buildPromVectorResponse([]model.Sample{
+			{Value: 60, Timestamp: now},
+		}),
+		memUsedQ: buildPromVectorResponse([]model.Sample{
+			{Value: 30000000000, Timestamp: now},
+		}),
+		memTotalQ: buildPromVectorResponse([]model.Sample{
+			{Value: 65536, Timestamp: now},
+		}),
+	}
+
+	mux := http.NewServeMux()
+	mux.Handle("/api/v1/query", &mockPromHandler{responses: mockResponses})
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	gen := newTestMetricsGenerator(t, server.URL, containers, devices)
+	resetTestMetrics()
+
+	err := gen.GenerateContainerMetrics(context.Background())
+	if err != nil {
+		t.Fatalf("GenerateContainerMetrics failed: %v", err)
+	}
+
+	// Expected: cardUtil=60, ratio=0.5, so core_used=30 for each
+	// core_util = 100 * 30 / 25 = 120 -- this is the "within allocated share" utilization
+	wantCoreUsed := float64(30)
+	wantCoreUtilA := roundToOneDecimal(100 * wantCoreUsed / float64(25))
+
+	labelsA := map[string]string{"pod_name": "pod-1", "container_name": "ctr-a", "namespace_name": "ns-1"}
+	labelsB := map[string]string{"pod_name": "pod-2", "container_name": "ctr-b", "namespace_name": "ns-1"}
+
+	// core_used = 30 for both
+	if got := readMetricAnyLabels("hami_container_core_used", labelsA); got != wantCoreUsed {
+		t.Errorf("ctr-a hami_container_core_used: want %v, got %v", wantCoreUsed, got)
+	}
+	if got := readMetricAnyLabels("hami_container_core_used", labelsB); got != wantCoreUsed {
+		t.Errorf("ctr-b hami_container_core_used: want %v, got %v", wantCoreUsed, got)
+	}
+
+	// core_util = 120 for both
+	if got := readMetricAnyLabels("hami_container_core_util", labelsA); got != wantCoreUtilA {
+		t.Errorf("ctr-a hami_container_core_util: want %v, got %v", wantCoreUtilA, got)
+	}
+	if got := readMetricAnyLabels("hami_container_core_util", labelsB); got != wantCoreUtilA {
+		t.Errorf("ctr-b hami_container_core_util: want %v, got %v", wantCoreUtilA, got)
+	}
+
+	// memory: card mem used = 30000000000 bytes = 28610.2 MB
+	// ratio=0.5, taskMemoryUsed = 28610.2 * 0.5 = 14305.1 MB
+	// after *1024*1024/1024/1024 NOOP: 14305.1
+	// memory_util = 100 * 14305.1 / 16384 = 87.3 -> roundToOneDecimal = 87.3
+	wantMemUsed := roundToOneDecimal(float64(30000000000) / 1024 / 1024 * 0.5)
+	wantMemUtil := roundToOneDecimal(100 * wantMemUsed / float64(16384))
+
+	if got := readMetricAnyLabels("hami_container_memory_used", labelsA); !approxEqual(wantMemUsed, got, 0.1) {
+		t.Errorf("ctr-a hami_container_memory_used: want %v, got %v", wantMemUsed, got)
+	}
+	if got := readMetricAnyLabels("hami_container_memory_used", labelsB); !approxEqual(wantMemUsed, got, 0.1) {
+		t.Errorf("ctr-b hami_container_memory_used: want %v, got %v", wantMemUsed, got)
+	}
+	if got := readMetricAnyLabels("hami_container_memory_util", labelsA); !approxEqual(wantMemUtil, got, 0.1) {
+		t.Errorf("ctr-a hami_container_memory_util: want ~%v, got %v", wantMemUtil, got)
+	}
+	if got := readMetricAnyLabels("hami_container_memory_util", labelsB); !approxEqual(wantMemUtil, got, 0.1) {
+		t.Errorf("ctr-b hami_container_memory_util: want ~%v, got %v", wantMemUtil, got)
+	}
+}
+
+func TestAscend910B_SingleContainer_FullCard(t *testing.T) {
+	deviceUUID := "npu-uuid-1"
+	devices := []*biz.DeviceInfo{
+		{
+			Id: deviceUUID, AliasId: deviceUUID,
+			Count: 1, Devmem: 65536, Devcore: 100,
+			Type: "Ascend910B", NodeName: "node-1", Provider: "Ascend", Health: true,
+		},
+	}
+	// Single container allocated 100% of the card (33792 MB)
+	containers := []*biz.Container{
+		{
+			Name: "ctr", PodName: "pod-1", Namespace: "ns-1", PodUID: "pod-uid-1", NodeName: "node-1",
+			ContainerDevices: biz.ContainerDevices{
+				{UUID: deviceUUID, Type: "Ascend910B", Usedmem: 33792, Usedcores: 100},
+			},
+		},
+	}
+
+	now := model.Now()
+	coreUtilQ := fmt.Sprintf("avg(npu_chip_info_utilization{vdie_id=\"%s\"})", deviceUUID)
+	memUsedQ := fmt.Sprintf("avg(npu_chip_info_hbm_used_memory{vdie_id=\"%s\"})", deviceUUID)
+	memTotalQ := fmt.Sprintf("avg(npu_chip_info_hbm_total_memory{vdie_id=\"%s\"})", deviceUUID)
+
+	mockResponses := map[string]string{
+		coreUtilQ: buildPromVectorResponse([]model.Sample{
+			{Value: 80, Timestamp: now},
+		}),
+		memUsedQ: buildPromVectorResponse([]model.Sample{
+			{Value: 20000000000, Timestamp: now},
+		}),
+		memTotalQ: buildPromVectorResponse([]model.Sample{
+			{Value: 65536, Timestamp: now},
+		}),
+	}
+
+	mux := http.NewServeMux()
+	mux.Handle("/api/v1/query", &mockPromHandler{responses: mockResponses})
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	gen := newTestMetricsGenerator(t, server.URL, containers, devices)
+	resetTestMetrics()
+
+	err := gen.GenerateContainerMetrics(context.Background())
+	if err != nil {
+		t.Fatalf("GenerateContainerMetrics failed: %v", err)
+	}
+
+	labels := map[string]string{"pod_name": "pod-1", "container_name": "ctr", "namespace_name": "ns-1"}
+
+	// Single container: ratio = 33792/33792 = 1.0
+	// core_used = 80 * 1.0 = 80
+	// core correction: perc = 33792/65536 = 0.5156, core = int32(51)
+	// util = 100 * 80 / 51 ≈ 156.9
+	if got := readMetricAnyLabels("hami_container_core_used", labels); got != 80 {
+		t.Errorf("core_used: want 80, got %v", got)
+	}
+
+	// memory: 20000000000/1024/1024 * 1.0 ≈ 19073.5 MB
+	wantMemUsed := roundToOneDecimal(float64(20000000000) / 1024 / 1024 * 1.0)
+	if got := readMetricAnyLabels("hami_container_memory_used", labels); !approxEqual(wantMemUsed, got, 0.1) {
+		t.Errorf("memory_used: want %v, got %v", wantMemUsed, got)
+	}
+}
+
+func TestAscend910B_NoMatchingContainer_Fallback(t *testing.T) {
+	// Device has no matching containers at all — totalMemoryOnCard=0
+	// Should skip proportional split and fall through to else branch
+	// (else branch calls taskCoreUsed/taskMemoryUsed, which will fail because
+	//  container_npu_* queries are not mocked — resulting in err != nil and no metrics set)
+	deviceUUID := "npu-uuid-1"
+	devices := []*biz.DeviceInfo{
+		{
+			Id: deviceUUID, AliasId: deviceUUID,
+			Count: 1, Devmem: 65536, Devcore: 100,
+			Type: "Ascend910B", NodeName: "node-1", Provider: "Ascend", Health: true,
+		},
+	}
+	// Container with a DIFFERENT UUID — won't match
+	containers := []*biz.Container{
+		{
+			Name: "ctr", PodName: "pod-1", Namespace: "ns-1", PodUID: "pod-uid-1", NodeName: "node-1",
+			ContainerDevices: biz.ContainerDevices{
+				{UUID: "other-uuid", Type: "Ascend910B", Usedmem: 16384, Usedcores: 25},
+			},
+		},
+	}
+
+	now := model.Now()
+	coreUtilQ := fmt.Sprintf("avg(npu_chip_info_utilization{vdie_id=\"%s\"})", deviceUUID)
+	memUsedQ := fmt.Sprintf("avg(npu_chip_info_hbm_used_memory{vdie_id=\"%s\"})", deviceUUID)
+	memTotalQ := fmt.Sprintf("avg(npu_chip_info_hbm_total_memory{vdie_id=\"%s\"})", deviceUUID)
+
+	// core correction in goroutine calls deviceMemTotal, so we need that mock
+	mockResponses := map[string]string{
+		coreUtilQ: buildPromVectorResponse([]model.Sample{
+			{Value: 60, Timestamp: now},
+		}),
+		memUsedQ: buildPromVectorResponse([]model.Sample{
+			{Value: 30000000000, Timestamp: now},
+		}),
+		memTotalQ: buildPromVectorResponse([]model.Sample{
+			{Value: 65536, Timestamp: now},
+		}),
+	}
+
+	mux := http.NewServeMux()
+	mux.Handle("/api/v1/query", &mockPromHandler{responses: mockResponses})
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	gen := newTestMetricsGenerator(t, server.URL, containers, devices)
+	resetTestMetrics()
+
+	// GenerateMetrics starts with reset() then GenerateContainerMetrics
+	// Use GenerateContainerMetrics directly
+	err := gen.GenerateContainerMetrics(context.Background())
+	if err != nil {
+		t.Fatalf("GenerateContainerMetrics failed: %v", err)
+	}
+
+	labels := map[string]string{"pod_name": "pod-1", "container_name": "ctr", "namespace_name": "ns-1"}
+
+	// Container UUID "other-uuid" does not match device UUID "npu-uuid-1"
+	// So provider remains "" and goroutine returns nil without setting any metrics
+	// readMetricAnyLabels returns -1 when no metric with matching labels exists
+	if got := readMetricAnyLabels("hami_container_core_used", labels); got != -1 {
+		t.Errorf("core_used: want -1 (no metric set for unmatched container), got %v", got)
+	}
+	if got := readMetricAnyLabels("hami_container_memory_used", labels); got != -1 {
+		t.Errorf("memory_used: want -1 (no metric set for unmatched container), got %v", got)
 	}
 }
