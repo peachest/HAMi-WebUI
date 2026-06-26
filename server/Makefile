@@ -13,6 +13,7 @@ VERSION ?= $(shell git describe --tags --always)
 DIRS = $(shell ls $(CMD_PATH))
 
 REF=$(if $(CI_COMMIT_REF_NAME),$(CI_COMMIT_REF_NAME),$(shell git rev-parse --abbrev-ref HEAD))
+CLEANED_REF=$(shell echo $(REF) | tr '/' '-')
 
 # 1. Install Go dependencies
 .PHONY: install-deps
@@ -70,9 +71,9 @@ build-image:
 .PHONY: buildx-image
 buildx-image:
 	echo ${REF}
-	docker buildx build --platform linux/amd64,linux/arm64 --push -t ${DOCKER_REPO_URL}/aip-mm/projecthami/hami-webui-be-oss:${REF} .
-	docker buildx build --platform linux/arm64 --push -t ${DOCKER_REPO_URL}/aip-arm/projecthami/hami-webui-be-oss:${REF} .
-	docker buildx build --platform linux/amd64 --push -t ${DOCKER_REPO_URL}/aip-amd/projecthami/hami-webui-be-oss:${REF} .
+	docker buildx build --platform linux/amd64,linux/arm64 --push -t ${DOCKER_REPO_URL}/aip-mm/projecthami/hami-webui-be-oss:${CLEANED_REF} .
+	docker buildx build --platform linux/arm64 --push -t ${DOCKER_REPO_URL}/aip-arm/projecthami/hami-webui-be-oss:${CLEANED_REF} .
+	docker buildx build --platform linux/amd64 --push -t ${DOCKER_REPO_URL}/aip-amd/projecthami/hami-webui-be-oss:${CLEANED_REF} .
 .PHONY: push-image
 push-image:
 	docker push ${DOCKER_IMAGE}:${VERSION}
