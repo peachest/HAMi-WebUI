@@ -524,7 +524,7 @@ func TestAscend910B_Proportional_SingleContainer_Success(t *testing.T) {
 			{Value: 30, Timestamp: now},
 		}),
 		memUsedQ: buildPromVectorResponse([]model.Sample{
-			{Value: 15000000000, Timestamp: now},
+			{Value: 14305.1, Timestamp: now},
 		}),
 	}
 
@@ -590,7 +590,7 @@ func TestAscend910B_Proportional_ZeroFallback_ToCardMetric(t *testing.T) {
 			{Value: 30, Timestamp: now},
 		}),
 		memUsedQ: buildPromVectorResponse([]model.Sample{
-			{Value: 15000000000, Timestamp: now},
+			{Value: 14305.1, Timestamp: now},
 		}),
 	}
 
@@ -712,7 +712,7 @@ func TestAscend910B_Proportional_MultiContainer_CoreMemory(t *testing.T) {
 	memUsedQ := fmt.Sprintf("avg(npu_chip_info_hbm_used_memory{vdie_id=\"%s\"})", deviceUUID)
 	memTotalQ := fmt.Sprintf("avg(npu_chip_info_hbm_total_memory{vdie_id=\"%s\"})", deviceUUID)
 
-	// Card util=90, card mem=30000000000 bytes (~28 GB)
+	// Card util=90, card mem=28610.2 MB (~28 GB)
 	// totalMemoryOnCard = 16384+32768 = 49152
 	// ctr-a: ratio=16384/49152≈0.333, core_used=90*0.333≈30, mem_used=28610.2*0.333≈9529 MB
 	// ctr-b: ratio=32768/49152≈0.667, core_used=90*0.667≈60, mem_used=28610.2*0.667≈19073 MB
@@ -721,7 +721,7 @@ func TestAscend910B_Proportional_MultiContainer_CoreMemory(t *testing.T) {
 			{Value: 90, Timestamp: now},
 		}),
 		memUsedQ: buildPromVectorResponse([]model.Sample{
-			{Value: 30000000000, Timestamp: now},
+			{Value: 28610.2, Timestamp: now},
 		}),
 		memTotalQ: buildPromVectorResponse([]model.Sample{
 			{Value: 65536, Timestamp: now},
@@ -1233,16 +1233,16 @@ func TestAscend910B_MultiContainer_ProportionalSplit(t *testing.T) {
 	memUsedQ := fmt.Sprintf("avg(npu_chip_info_hbm_used_memory{vdie_id=\"%s\"})", deviceUUID)
 	memTotalQ := fmt.Sprintf("avg(npu_chip_info_hbm_total_memory{vdie_id=\"%s\"})", deviceUUID)
 
-	// Card util=60%, card mem used=30000000000 bytes (~28 GB)
+	// Card util=60%, card mem used=28610.2 MB (~28 GB)
 	// Each container ratio=16384/32768=0.5
-	// taskCoreUsed=60*0.5=30, taskMemoryUsed=(30000000000/1024/1024)*0.5≈14305 MB
+	// taskCoreUsed=60*0.5=30, taskMemoryUsed=28610.2*0.5≈14305 MB
 	// core correction: perc=16384/65536=0.25, core=int32(25)
 	mockResponses := map[string]string{
 		coreUtilQ: buildPromVectorResponse([]model.Sample{
 			{Value: 60, Timestamp: now},
 		}),
 		memUsedQ: buildPromVectorResponse([]model.Sample{
-			{Value: 30000000000, Timestamp: now},
+			{Value: 28610.2, Timestamp: now},
 		}),
 		memTotalQ: buildPromVectorResponse([]model.Sample{
 			{Value: 65536, Timestamp: now},
@@ -1286,7 +1286,7 @@ func TestAscend910B_MultiContainer_ProportionalSplit(t *testing.T) {
 		t.Errorf("ctr-b hami_container_core_util: want %v, got %v", wantCoreUtilA, got)
 	}
 
-	// memory: card mem used = 30000000000 bytes = 28610.2 MB
+	// memory: card mem used = 28610.2 MB
 	// ratio=0.5, taskMemoryUsed = 28610.2 * 0.5 = 14305.1 MB
 	// after *1024*1024/1024/1024 NOOP: 14305.1
 	// memory_util = 100 * 14305.1 / 16384 = 87.3 -> roundToOneDecimal = 87.3
@@ -1336,7 +1336,7 @@ func TestAscend910B_SingleContainer_FullCard(t *testing.T) {
 			{Value: 80, Timestamp: now},
 		}),
 		memUsedQ: buildPromVectorResponse([]model.Sample{
-			{Value: 20000000000, Timestamp: now},
+			{Value: 19073.5, Timestamp: now},
 		}),
 		memTotalQ: buildPromVectorResponse([]model.Sample{
 			{Value: 65536, Timestamp: now},
@@ -1407,7 +1407,7 @@ func TestAscend910B_NoMatchingContainer_Fallback(t *testing.T) {
 			{Value: 60, Timestamp: now},
 		}),
 		memUsedQ: buildPromVectorResponse([]model.Sample{
-			{Value: 30000000000, Timestamp: now},
+			{Value: 28610.2, Timestamp: now},
 		}),
 		memTotalQ: buildPromVectorResponse([]model.Sample{
 			{Value: 65536, Timestamp: now},

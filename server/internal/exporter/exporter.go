@@ -171,12 +171,18 @@ func (s *MetricsGenerator) GenerateContainerMetrics(ctx context.Context) error {
 			var ascendCardUtilErr, ascendCardMemErr error
 			ascendCardUtil, ascendCardUtilErr = s.deviceCoreUtil(ctx, device.Provider, device.Id)
 			cdMemBytes, ascendCardMemErr = s.deviceMemUsed(ctx, device.Provider, device.Id)
+			if ascendCardUtilErr != nil {
+				log.Warnf("failed to query Ascend card util for device %s: %v", device.Id, ascendCardUtilErr)
+			}
+			if ascendCardMemErr != nil {
+				log.Warnf("failed to query Ascend card mem for device %s: %v", device.Id, ascendCardMemErr)
+			}
 			// ascendCardQueriesOK guards the proportional-split branch below.
 			// If queries failed the goroutine falls back to taskCoreUsed/MemoryUsed,
 			// matching the existing codebase pattern (silent skip on err != nil).
 			ascendCardQueriesOK = ascendCardUtilErr == nil && ascendCardMemErr == nil
 			if ascendCardQueriesOK && cdMemBytes > 0 {
-				ascendCardMemUsedMB = cdMemBytes / 1024 / 1024
+				ascendCardMemUsedMB = cdMemBytes
 			}
 			for _, c := range containers {
 				for _, cd := range c.ContainerDevices {
@@ -281,8 +287,8 @@ func (s *MetricsGenerator) GenerateContainerMetrics(ctx context.Context) error {
 					case biz.CambriconGPUDevice:
 						taskMemoryUsed = float32((taskMemoryUsed/100)*float32(memory)) * 1024 * 1024
 					case biz.AscendGPUDevice:
-						// taskMemoryUsed already returns MB (vnpu: KB/1024, container: raw MB)
-						// Multiply by 1024*1024 to keep universal /1024/1024 conversion a NOOP
+						// taskMemoryUsed is in MB (from npu_chip_info_hbm_used_memory),
+						// convert to bytes for the universal /1024/1024 at HamiContainerMemoryUsed
 						taskMemoryUsed = float32(taskMemoryUsed) * 1024 * 1024
 					case biz.AlibabaPPUDevice:
 						// DCGM_FI_DEV_FB_USED unit is MiB, convert to bytes to match universal /1024/1024 conversion
