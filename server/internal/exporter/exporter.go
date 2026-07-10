@@ -103,9 +103,8 @@ func (s *MetricsGenerator) GenerateDeviceMetrics(ctx context.Context) error {
 			if v, err := s.deviceMemUsed(ctx, provider, device.Id); err == nil {
 				HamiMemoryUsed.WithLabelValues(device.NodeName, provider, device.Type, device.Id, driver, deviceNo).Set(float64(v))
 				HamiMemoryUtil.WithLabelValues(device.NodeName, provider, device.Type, device.Id, driver, deviceNo).Set(roundToOneDecimal(100 * float64(v/float32(device.Devmem))))
-			} else {
-				HamiMemorySize.WithLabelValues(device.NodeName, provider, device.Type, device.Id, driver, deviceNo).Set(float64(device.Devmem))
 			}
+			HamiMemorySize.WithLabelValues(device.NodeName, provider, device.Type, device.Id, driver, deviceNo).Set(float64(device.Devmem))
 			if total, err := s.deviceMemTotal(ctx, provider, device.Id); err == nil && total > 0 {
 				HamiVMemoryScaling.WithLabelValues(device.NodeName, provider, device.Type, device.Id, driver, deviceNo).Set(roundToOneDecimal(float64(float32(device.Devmem) / total)))
 			}
