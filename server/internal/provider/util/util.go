@@ -19,12 +19,14 @@ const (
 	OnePodMultiContainerSplitSymbol = ";"
 
 	NvidiaGPUDevice     = "NVIDIA"
-	AscendGPUDevice     = "Ascend"
-	Ascend310PGPUDevice = "Ascend310P"
 	HygonGPUDevice      = "DCU"
 	CambriconGPUDevice  = "MLU"
 	MetaxSGPUDevice     = "Metax-SGPU"
 	AlibabaPPUDevice    = "PPU"
+
+	// Ascend 前缀，所有 Ascend 型号（Ascend910A/910B/910B3/910B4/910B4-1/910C/310P 等）均以此为前缀。
+	// 常量统一定义在 ascend 包中，此处仅保留前缀用于 DecodePodDevices 路由。
+	AscendPrefix = "Ascend"
 
 	DsmluProfileAndInstance = "CAMBRICON_DSMLU_PROFILE_INSTANCE"
 
@@ -46,14 +48,57 @@ func init() {
 	InRequestDevices = make(map[string]string)
 	SupportDevices = make(map[string]string)
 	ascendDeviceConfigs = map[string]map[int32]ascendDeviceConfig{
-		"Ascend910B": {
-			16384: {Usedmem: 16384, Usedcores: 25},
-			32768: {Usedmem: 32768, Usedcores: 50},
+		// Ascend910A (chipName: 910B, aiCore=30, mem=32768)
+		"Ascend910A": {
+			2184:   {Usedmem: 2184, Usedcores: 7},   // vir02: 2/30
+			4369:   {Usedmem: 4369, Usedcores: 13},  // vir04: 4/30
+			8738:   {Usedmem: 8738, Usedcores: 27},  // vir08: 8/30
+			17476:  {Usedmem: 17476, Usedcores: 53}, // vir16: 16/30
+			32768:  {Usedmem: 32768, Usedcores: 100},
 		},
+		// Ascend910B2 (chipName: 910B2, aiCore=24, mem=65536)
+		"Ascend910B2": {
+			8192:  {Usedmem: 8192, Usedcores: 13},  // vir03_1c_8g: 3/24
+			16384: {Usedmem: 16384, Usedcores: 25}, // vir06_1c_16g: 6/24
+			32768: {Usedmem: 32768, Usedcores: 50}, // vir12_3c_32g: 12/24
+			65536: {Usedmem: 65536, Usedcores: 100},
+		},
+		// Ascend910B (base-charts commonWord for 910B3, aiCore=20, mem=65536)
+		"Ascend910B": {
+			16384: {Usedmem: 16384, Usedcores: 25}, // vir05_1c_16g: 5/20
+			32768: {Usedmem: 32768, Usedcores: 50}, // vir10_3c_32g: 10/20
+			65536: {Usedmem: 65536, Usedcores: 100},
+		},
+		// Ascend910B3 (HAMi chart commonWord for 910B3, aiCore=20, mem=65536)
+		"Ascend910B3": {
+			16384: {Usedmem: 16384, Usedcores: 25}, // vir05_1c_16g: 5/20
+			32768: {Usedmem: 32768, Usedcores: 50}, // vir10_3c_32g: 10/20
+			65536: {Usedmem: 65536, Usedcores: 100},
+		},
+		// Ascend910B4 (chipName: 910B4, aiCore=20, mem=32768)
+		"Ascend910B4": {
+			8192:  {Usedmem: 8192, Usedcores: 25},  // vir05_1c_8g: 5/20
+			16384: {Usedmem: 16384, Usedcores: 50}, // vir10_3c_16g: 10/20
+			32768: {Usedmem: 32768, Usedcores: 100},
+		},
+		// Ascend910B4-1 (chipName: 910B4-1, aiCore=20, mem=65536)
+		"Ascend910B4-1": {
+			16384: {Usedmem: 16384, Usedcores: 25},  // vir05_1c_8g: 5/20
+			32768: {Usedmem: 32768, Usedcores: 50},  // vir10_3c_16g: 10/20
+			65536: {Usedmem: 65536, Usedcores: 100},
+		},
+		// Ascend910C (chipName: Ascend910, aiCore=20, mem=65536, superPod)
+		"Ascend910C": {
+			16384: {Usedmem: 16384, Usedcores: 25}, // vir05_1c_16g: 5/20
+			32768: {Usedmem: 32768, Usedcores: 50}, // vir10_3c_32g: 10/20
+			65536: {Usedmem: 65536, Usedcores: 100},
+		},
+		// Ascend310P (chipName: 310P3, aiCore=8, mem=24576)
 		"Ascend310P": {
-			3072:  {Usedmem: 3072, Usedcores: 13},
-			6144:  {Usedmem: 6144, Usedcores: 25},
-			12288: {Usedmem: 12288, Usedcores: 50},
+			3072:  {Usedmem: 3072, Usedcores: 13},  // vir01: 1/8
+			6144:  {Usedmem: 6144, Usedcores: 25},  // vir02: 2/8
+			12288: {Usedmem: 12288, Usedcores: 50}, // vir04: 4/8
+			24576: {Usedmem: 24576, Usedcores: 100},
 		},
 	}
 	initMLUDevice()
@@ -288,8 +333,7 @@ func DecodePodDevices(pod *corev1.Pod, log *log.Helper) (PodDevices, error) {
 			continue
 		}
 		pd[devType] = make(PodSingleDevice, 0)
-		switch devType {
-		case AscendGPUDevice, Ascend310PGPUDevice:
+		if strings.HasPrefix(devType, AscendPrefix) {
 			for _, s := range strings.Split(str, OnePodMultiContainerSplitSymbol) {
 				cd, err := DecodeNpuContainerDevices(s)
 				if err != nil {
@@ -300,6 +344,9 @@ func DecodePodDevices(pod *corev1.Pod, log *log.Helper) (PodDevices, error) {
 				}
 				pd[devType] = append(pd[devType], cd)
 			}
+			continue
+		}
+		switch devType {
 		case CambriconGPUDevice:
 			instance := annos[DsmluProfileAndInstance]
 			cd, err := DecodeMLUContainerDevices(fmt.Sprintf("%s_%s_%s", str, instance, nodeName), nodeName)
