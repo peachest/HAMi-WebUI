@@ -159,13 +159,16 @@ func (s *MetricsGenerator) GenerateContainerMetrics(ctx context.Context) error {
 	for _, d := range deviceInfos {
 		device := d
 		// === Ascend pre-calculation: card-level metrics + total allocation ===
-		// ponytail: proportional split — npu-exporter doesn't support vnpu for 910B/A3 yet.
-		// Card-level metrics are divided across containers by Usedmem ratio.
+		// Proportional split: npu-exporter doesn't support vnpu for split models (910B/A3)
+		// yet, so card-level metrics are divided across containers by Usedmem ratio.
+		// Non-split models (910C) are excluded — their container-level metrics are accurate.
 		var ascendCardUtil float32
 		var ascendCardMemUsedMB float32
 		var ascendTotalMemoryOnCard int32
 		var ascendCardQueriesOK bool
-		if strings.HasPrefix(device.Provider, biz.AscendGPUDevice) {
+		var ascendIsSplitModel bool
+		if strings.HasPrefix(device.Provider, biz.AscendGPUDevice) && !strings.HasPrefix(device.Type, "Ascend910C") {
+			ascendIsSplitModel = true
 			var cdMemBytes float32
 			var ascendCardUtilErr, ascendCardMemErr error
 			ascendCardUtil, ascendCardUtilErr = s.deviceCoreUtil(ctx, device.Provider, device.Id)
@@ -177,12 +180,10 @@ func (s *MetricsGenerator) GenerateContainerMetrics(ctx context.Context) error {
 				log.Warnf("failed to query Ascend card mem for device %s: %v", device.Id, ascendCardMemErr)
 			}
 			// ascendCardQueriesOK guards the proportional-split branch below.
-			// If queries failed the goroutine falls back to taskCoreUsed/MemoryUsed,
-			// matching the existing codebase pattern (silent skip on err != nil).
+			// Split models: if queries fail, core/memory metrics are skipped to avoid
+			// whole-card values producing >100% utilization. See ADR-0001.
 			ascendCardQueriesOK = ascendCardUtilErr == nil && ascendCardMemErr == nil
-			if ascendCardQueriesOK && cdMemBytes > 0 {
-				ascendCardMemUsedMB = cdMemBytes
-			}
+			ascendCardMemUsedMB = cdMemBytes
 			for _, c := range containers {
 				for _, cd := range c.ContainerDevices {
 					if device.AliasId != "" && !device.MatchAlias(cd.UUID) {
@@ -229,18 +230,23 @@ func (s *MetricsGenerator) GenerateContainerMetrics(ctx context.Context) error {
 				HamiContainerVcoreAllocated.WithLabelValues(device.NodeName, provider, device.Type, device.Id, c.PodName, c.Name, c.Namespace, fmt.Sprintf("%s:%s", c.Name, c.PodUID)).Set(float64(core))
 
 				// 查询任务在当前设备下的算力利用率
-				// Ascend: use proportional split from pre-calculated card-level metrics
+				// Ascend split models: use proportional split from pre-calculated card-level metrics.
+				// If proportional split is not viable, skip core/memory metrics to avoid
+				// whole-card values producing >100% utilization (ADR-0001).
+				isAscendSplitModel := provider == biz.AscendGPUDevice && ascendIsSplitModel
+				canProportionalSplit := isAscendSplitModel && ascendCardQueriesOK && ascendTotalMemoryOnCard > 0
+				ascendSkipMetrics := isAscendSplitModel && !canProportionalSplit
 				var taskCoreUsed float32
 				var taskCoreUsedErr error
-				if provider == biz.AscendGPUDevice && ascendCardQueriesOK && ascendTotalMemoryOnCard > 0 {
+				if canProportionalSplit {
 					ratio := float32(memory) / float32(ascendTotalMemoryOnCard)
 					taskCoreUsed = ascendCardUtil * ratio
 					log.Infof("GenerateContainerMetrics: ascend proportional-split device=%s container=%s pod=%s ratio=%.2f cardUtil=%.2f coreUsed=%.2f",
 						device.Id, c.Name, c.PodName, ratio, ascendCardUtil, taskCoreUsed)
-				} else {
+				} else if !ascendSkipMetrics {
 					taskCoreUsed, taskCoreUsedErr = s.taskCoreUsed(ctx, provider, c.Namespace, c.PodName, c.Name, c.PodUID, device.Id)
 				}
-				if taskCoreUsedErr == nil {
+				if !ascendSkipMetrics && taskCoreUsedErr == nil {
 					used := float64(0)
 					util := float64(0)
 					switch provider {
@@ -275,13 +281,15 @@ func (s *MetricsGenerator) GenerateContainerMetrics(ctx context.Context) error {
 				}
 				var taskMemoryUsed float32
 				var taskMemoryUsedErr error
-				if provider == biz.AscendGPUDevice && ascendCardQueriesOK && ascendTotalMemoryOnCard > 0 {
+				if canProportionalSplit {
 					ratio := float32(memory) / float32(ascendTotalMemoryOnCard)
 					taskMemoryUsed = ascendCardMemUsedMB * ratio
-				} else {
+					log.Infof("GenerateContainerMetrics: ascend proportional-split device=%s container=%s pod=%s ratio=%.2f cardMemUsedMB=%.2f memUsedMB=%.2f",
+						device.Id, c.Name, c.PodName, ratio, ascendCardMemUsedMB, taskMemoryUsed)
+				} else if !ascendSkipMetrics {
 					taskMemoryUsed, taskMemoryUsedErr = s.taskMemoryUsed(ctx, provider, c.Namespace, c.PodName, c.Name, c.PodUID, device.Id)
 				}
-				if taskMemoryUsedErr == nil {
+				if !ascendSkipMetrics && taskMemoryUsedErr == nil {
 					switch provider {
 					case biz.CambriconGPUDevice:
 						taskMemoryUsed = float32((taskMemoryUsed/100)*float32(memory)) * 1024 * 1024

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 	"vgpu/internal/biz"
@@ -486,6 +487,26 @@ func TestAscend910C_GenerateContainerMetrics_Merged_MatchAlias(t *testing.T) {
 		"namespace_name": "default",
 	}); got != 16384 {
 		t.Errorf("hami_container_vmemory_allocated: want 16384, got %v", got)
+	}
+
+	// 910C is a non-split model — should use fallback (taskCoreUsed/taskMemoryUsed),
+	// not proportional split. Verify core/memory metrics ARE set via fallback.
+	// deviceMemTotal = 65536+65536 = 131072, perc = 16384/131072 = 0.125, core = 12
+	// taskCoreUsed = 60 (from container_npu_utilization)
+	if got := readMetricAnyLabels("hami_container_core_used", map[string]string{
+		"container_name": "inference",
+		"pod_name":       "ascend-pod",
+		"namespace_name": "default",
+	}); got != 60 {
+		t.Errorf("hami_container_core_used: want 60 (fallback, not proportional split), got %v", got)
+	}
+	// taskMemoryUsed = 2048 MB (from container_npu_used_memory)
+	if got := readMetricAnyLabels("hami_container_memory_used", map[string]string{
+		"container_name": "inference",
+		"pod_name":       "ascend-pod",
+		"namespace_name": "default",
+	}); got != 2048 {
+		t.Errorf("hami_container_memory_used: want 2048 (fallback, not proportional split), got %v", got)
 	}
 }
 
@@ -1439,5 +1460,80 @@ func TestAscend910B_NoMatchingContainer_Fallback(t *testing.T) {
 	}
 	if got := readMetricAnyLabels("hami_container_memory_used", labels); got != -1 {
 		t.Errorf("memory_used: want -1 (no metric set for unmatched container), got %v", got)
+	}
+}
+
+func TestAscend910B_CardQueryFails_SkipCoreMemoryMetrics(t *testing.T) {
+	// Split model (910B) with card-level query failure → ascendCardQueriesOK = false
+	// Core/memory metrics should be SKIPPED (not set) to avoid whole-card values
+	// producing >100% utilization (ADR-0001).
+	// Allocation metrics should still be set.
+	deviceUUID := "npu-uuid-skip"
+	devices := []*biz.DeviceInfo{
+		{
+			Id: deviceUUID, AliasId: deviceUUID,
+			Count: 1, Devmem: 65536, Devcore: 100,
+			Type: "Ascend910B", NodeName: "node-1", Provider: "Ascend", Health: true,
+		},
+	}
+	containers := []*biz.Container{
+		{
+			Name: "ctr", PodName: "pod-1", Namespace: "ns-1", PodUID: "pod-uid-1", NodeName: "node-1",
+			ContainerDevices: biz.ContainerDevices{
+				{UUID: deviceUUID, Type: "Ascend910B", Usedmem: 16384, Usedcores: 25},
+			},
+		},
+	}
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/v1/query", func(w http.ResponseWriter, r *http.Request) {
+		query := r.URL.Query().Get("query")
+		if r.Method == "POST" {
+			query = r.PostFormValue("query")
+		}
+		// Card-level queries return HTTP 500 → queryInstantVal returns error
+		// → ascendCardQueriesOK = false → ascendSkipMetrics = true
+		if strings.Contains(query, "npu_chip_info_utilization") || strings.Contains(query, "npu_chip_info_hbm_used_memory") {
+			http.Error(w, "internal server error", http.StatusInternalServerError)
+			return
+		}
+		// Other queries (e.g. deviceMemTotal) return empty result
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"status":"success","data":{"resultType":"vector","result":[]}}`))
+	})
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	gen := newTestMetricsGenerator(t, server.URL, containers, devices)
+	resetTestMetrics()
+
+	err := gen.GenerateContainerMetrics(context.Background())
+	if err != nil {
+		t.Fatalf("GenerateContainerMetrics failed: %v", err)
+	}
+
+	labels := map[string]string{"pod_name": "pod-1", "container_name": "ctr", "namespace_name": "ns-1"}
+
+	// Allocation metrics should be set (unaffected by card query failure)
+	if got := readMetricAnyLabels("hami_container_vgpu_allocated", labels); got != 1 {
+		t.Errorf("hami_container_vgpu_allocated: want 1, got %v", got)
+	}
+	if got := readMetricAnyLabels("hami_container_vmemory_allocated", labels); got != 16384 {
+		t.Errorf("hami_container_vmemory_allocated: want 16384, got %v", got)
+	}
+
+	// Core/memory metrics should NOT be set (skipped per ADR-0001)
+	// readMetricAnyLabels returns -1 when no metric with matching labels exists
+	if got := readMetricAnyLabels("hami_container_core_used", labels); got != -1 {
+		t.Errorf("hami_container_core_used: want -1 (skipped), got %v", got)
+	}
+	if got := readMetricAnyLabels("hami_container_core_util", labels); got != -1 {
+		t.Errorf("hami_container_core_util: want -1 (skipped), got %v", got)
+	}
+	if got := readMetricAnyLabels("hami_container_memory_used", labels); got != -1 {
+		t.Errorf("hami_container_memory_used: want -1 (skipped), got %v", got)
+	}
+	if got := readMetricAnyLabels("hami_container_memory_util", labels); got != -1 {
+		t.Errorf("hami_container_memory_util: want -1 (skipped), got %v", got)
 	}
 }
