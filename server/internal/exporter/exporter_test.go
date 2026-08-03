@@ -561,21 +561,19 @@ func TestAscend910B_Proportional_SingleContainer_Success(t *testing.T) {
 		t.Fatalf("GenerateContainerMetrics failed: %v", err)
 	}
 
-	// Pre-calculated: cardUtil=30, totalMemoryOnCard=11264, ratio=1.0
-	// taskCoreUsed = 30 * 1.0 = 30
-	// Adjusted core=17 (11264/65536*100)
-	// core_util = 100 * 30 / 17 ≈ 176.5
+	// ratio=11264/11264=1.0, cardUtil=30
+	// core_used = 30 × 1.0 = 30, core_util = core_used = 30
 	wantUsed := float64(30)
-	wantUtil := roundToOneDecimal(100 * float64(30) / float64(17))
+	wantUtil := float64(30)
 	if got := readMetricAnyLabels("hami_container_core_used", map[string]string{
 		"pod_name": "pod-1", "container_name": "ctr", "namespace_name": "ns-1",
 	}); got != wantUsed {
-		t.Errorf("hami_container_core_used: want %v (cardUtil=30*ratio=1), got %v", wantUsed, got)
+		t.Errorf("hami_container_core_used: want %v, got %v", wantUsed, got)
 	}
 	if got := readMetricAnyLabels("hami_container_core_util", map[string]string{
 		"pod_name": "pod-1", "container_name": "ctr", "namespace_name": "ns-1",
 	}); !approxEqual(wantUtil, got, 0.1) {
-		t.Errorf("hami_container_core_util: want ~%v (100*30/17), got %v", wantUtil, got)
+		t.Errorf("hami_container_core_util: want ~%v (=core_used), got %v", wantUtil, got)
 	}
 }
 
@@ -687,17 +685,19 @@ func TestAscend_vnpu_taskCoreUsed_Empty_Fallback(t *testing.T) {
 	}
 
 	// Fallback to container value: core_used = 50, core_util = 100 * 50 / 51 ≈ 98.0
+	// 比例拆分：cardUtil=50, ratio=33792/33792=1.0
+	// core_used = 50 × 1.0 = 50, core_util = core_used = 50
 	wantUsed := float64(50)
-	wantUtil := roundToOneDecimal(100 * float64(50) / float64(51))
+	wantUtil := float64(50)
 	if got := readMetricAnyLabels("hami_container_core_used", map[string]string{
 		"pod_name": "pod-1", "container_name": "ctr", "namespace_name": "ns-1",
-	}); got != wantUsed {
-		t.Errorf("hami_container_core_used: want %v (fallback), got %v", wantUsed, got)
+	}); !approxEqual(wantUsed, got, 0.1) {
+		t.Errorf("hami_container_core_used: want %v, got %v", wantUsed, got)
 	}
 	if got := readMetricAnyLabels("hami_container_core_util", map[string]string{
 		"pod_name": "pod-1", "container_name": "ctr", "namespace_name": "ns-1",
 	}); !approxEqual(wantUtil, got, 0.1) {
-		t.Errorf("hami_container_core_util: want ~%v (100*50/51), got %v", wantUtil, got)
+		t.Errorf("hami_container_core_util: want ~%v (=core_used), got %v", wantUtil, got)
 	}
 }
 
@@ -1284,9 +1284,9 @@ func TestAscend910B_MultiContainer_ProportionalSplit(t *testing.T) {
 	}
 
 	// Expected: cardUtil=60, ratio=0.5, so core_used=30 for each
-	// core_util = 100 * 30 / 25 = 120 -- this is the "within allocated share" utilization
+	// core_util = core_used = 30 (比例拆分：util = used，不除以 core)
 	wantCoreUsed := float64(30)
-	wantCoreUtilA := roundToOneDecimal(100 * wantCoreUsed / float64(25))
+	wantCoreUtilA := float64(30)
 
 	labelsA := map[string]string{"pod_name": "pod-1", "container_name": "ctr-a", "namespace_name": "ns-1"}
 	labelsB := map[string]string{"pod_name": "pod-2", "container_name": "ctr-b", "namespace_name": "ns-1"}
@@ -1299,11 +1299,11 @@ func TestAscend910B_MultiContainer_ProportionalSplit(t *testing.T) {
 		t.Errorf("ctr-b hami_container_core_used: want %v, got %v", wantCoreUsed, got)
 	}
 
-	// core_util = 120 for both
-	if got := readMetricAnyLabels("hami_container_core_util", labelsA); got != wantCoreUtilA {
+	// core_util = 30 for both (= core_used)
+	if got := readMetricAnyLabels("hami_container_core_util", labelsA); !approxEqual(wantCoreUtilA, got, 0.1) {
 		t.Errorf("ctr-a hami_container_core_util: want %v, got %v", wantCoreUtilA, got)
 	}
-	if got := readMetricAnyLabels("hami_container_core_util", labelsB); got != wantCoreUtilA {
+	if got := readMetricAnyLabels("hami_container_core_util", labelsB); !approxEqual(wantCoreUtilA, got, 0.1) {
 		t.Errorf("ctr-b hami_container_core_util: want %v, got %v", wantCoreUtilA, got)
 	}
 

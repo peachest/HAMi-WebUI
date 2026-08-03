@@ -249,31 +249,37 @@ func (s *MetricsGenerator) GenerateContainerMetrics(ctx context.Context) error {
 				if !ascendSkipMetrics && taskCoreUsedErr == nil {
 					used := float64(0)
 					util := float64(0)
-					switch provider {
-					case biz.NvidiaGPUDevice:
+					if canProportionalSplit {
+						// 比例拆分：used/util 都是 ratio×cardUtil，不除以 core
 						used = float64(taskCoreUsed)
-						util = roundToOneDecimal(100 * float64(taskCoreUsed) / float64(core))
-					case biz.AlibabaPPUDevice:
-						used = float64(taskCoreUsed)
-						util = roundToOneDecimal(100 * float64(taskCoreUsed) / float64(core))
-					case biz.CambriconGPUDevice:
-						used = float64(taskCoreUsed) / 100 * float64(core)
-						util = float64(taskCoreUsed)
-					case biz.HygonGPUDevice, biz.AscendGPUDevice:
-						used = float64(taskCoreUsed)
-						util = roundToOneDecimal(100 * float64(taskCoreUsed) / float64(core))
-					case biz.MetaxGPUDevice:
-						used = float64(taskCoreUsed)
-						util = roundToOneDecimal(100 * float64(taskCoreUsed) / float64(core))
-					default:
-					}
-					// cardCoreUtil > 95 修正：当卡级利用率极高时，用卡级值代替容器级值
-					// 但 Ascend vnpu 路径已有精确的容器级指标（vnpu_pod_aicore_utilization），
-					// 跳过卡级修正以避免覆盖精确的 vnpu 数值。
-					if provider != biz.AscendGPUDevice {
-						if cardCoreUtil, err := s.deviceCoreUtil(ctx, provider, device.Id); err == nil && used != 0 && cardCoreUtil > 95 {
-							used = float64(cardCoreUtil) / 100 * float64(core)
-							util = float64(cardCoreUtil)
+						util = roundToOneDecimal(float64(taskCoreUsed))
+					} else {
+						switch provider {
+						case biz.NvidiaGPUDevice:
+							used = float64(taskCoreUsed)
+							util = roundToOneDecimal(100 * float64(taskCoreUsed) / float64(core))
+						case biz.AlibabaPPUDevice:
+							used = float64(taskCoreUsed)
+							util = roundToOneDecimal(100 * float64(taskCoreUsed) / float64(core))
+						case biz.CambriconGPUDevice:
+							used = float64(taskCoreUsed) / 100 * float64(core)
+							util = float64(taskCoreUsed)
+						case biz.HygonGPUDevice, biz.AscendGPUDevice:
+							used = float64(taskCoreUsed)
+							util = roundToOneDecimal(100 * float64(taskCoreUsed) / float64(core))
+						case biz.MetaxGPUDevice:
+							used = float64(taskCoreUsed)
+							util = roundToOneDecimal(100 * float64(taskCoreUsed) / float64(core))
+						default:
+						}
+						// cardCoreUtil > 95 修正：当卡级利用率极高时，用卡级值代替容器级值
+						// 但 Ascend vnpu 路径已有精确的容器级指标（vnpu_pod_aicore_utilization），
+						// 跳过卡级修正以避免覆盖精确的 vnpu 数值。
+						if provider != biz.AscendGPUDevice {
+							if cardCoreUtil, err := s.deviceCoreUtil(ctx, provider, device.Id); err == nil && used != 0 && cardCoreUtil > 95 {
+								used = float64(cardCoreUtil) / 100 * float64(core)
+								util = float64(cardCoreUtil)
+							}
 						}
 					}
 					HamiContainerCoreUsed.WithLabelValues(device.NodeName, provider, device.Type, device.Id, c.PodName, c.Name, c.Namespace).Set(used)
