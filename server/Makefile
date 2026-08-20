@@ -15,6 +15,10 @@ DIRS = $(shell ls $(CMD_PATH))
 REF=$(if $(CI_COMMIT_REF_NAME),$(CI_COMMIT_REF_NAME),$(shell git rev-parse --abbrev-ref HEAD))
 CLEANED_REF=$(shell echo $(REF) | tr '/' '-')
 
+PACKAGE := hami-webui-be
+BUILD_VERSION := ${CLEANED_REF}-${BUILD_DATE}-${COMMIT_ID}
+DOCKER_LABELS := --label build_name=${PACKAGE} --label build_version=${BUILD_VERSION} --label build_time=${BUILD_TIME} --label commit_id=${CI_COMMIT_SHA}
+
 # 1. Install Go dependencies
 .PHONY: install-deps
 install-deps:
@@ -66,14 +70,22 @@ build-local:
 # 5. Docker image commands
 .PHONY: build-image
 build-image:
-	docker build --platform linux/amd64 -t ${DOCKER_IMAGE}:${VERSION} .
+	docker build --platform linux/amd64 ${DOCKER_LABELS} -t ${DOCKER_IMAGE}:${VERSION} .
 
+# 构建一次 multi-arch manifest，同时推送到 aip 与 aip-mm 两个项目；
+# 再从 manifest 抽取单架构变体 retag 推送到 aip-amd、aip-arm（对齐 common-ci build-image-multiplatform）。
 .PHONY: buildx-image
 buildx-image:
 	echo ${REF}
-	docker buildx build --platform linux/amd64,linux/arm64 --push -t ${DOCKER_REPO_URL}/aip-mm/projecthami/hami-webui-be-oss:${CLEANED_REF} .
-	docker buildx build --platform linux/arm64 --push -t ${DOCKER_REPO_URL}/aip-arm/projecthami/hami-webui-be-oss:${CLEANED_REF} .
-	docker buildx build --platform linux/amd64 --push -t ${DOCKER_REPO_URL}/aip-amd/projecthami/hami-webui-be-oss:${CLEANED_REF} .
+	docker buildx build --platform linux/amd64,linux/arm64 --push ${DOCKER_LABELS} \
+		-t ${DOCKER_REPO_URL}/aip/projecthami/hami-webui-be-oss:${CLEANED_REF} \
+		-t ${DOCKER_REPO_URL}/aip-mm/projecthami/hami-webui-be-oss:${CLEANED_REF} .
+	docker pull --platform linux/amd64 ${DOCKER_REPO_URL}/aip-mm/projecthami/hami-webui-be-oss:${CLEANED_REF} && \
+		docker tag ${DOCKER_REPO_URL}/aip-mm/projecthami/hami-webui-be-oss:${CLEANED_REF} ${DOCKER_REPO_URL}/aip-amd/projecthami/hami-webui-be-oss:${CLEANED_REF} && \
+		docker push ${DOCKER_REPO_URL}/aip-amd/projecthami/hami-webui-be-oss:${CLEANED_REF}
+	docker pull --platform linux/arm64 ${DOCKER_REPO_URL}/aip-mm/projecthami/hami-webui-be-oss:${CLEANED_REF} && \
+		docker tag ${DOCKER_REPO_URL}/aip-mm/projecthami/hami-webui-be-oss:${CLEANED_REF} ${DOCKER_REPO_URL}/aip-arm/projecthami/hami-webui-be-oss:${CLEANED_REF} && \
+		docker push ${DOCKER_REPO_URL}/aip-arm/projecthami/hami-webui-be-oss:${CLEANED_REF}
 .PHONY: push-image
 push-image:
 	docker push ${DOCKER_IMAGE}:${VERSION}

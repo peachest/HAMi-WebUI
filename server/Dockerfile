@@ -23,7 +23,11 @@ RUN PATH=/root/go/bin:$PATH make build
 
 FROM harbor.transwarp.io/aip-mm/base/alpine-runner:3.19
 ARG TARGETARCH
-
 ARG ARCH=${TARGETARCH}
+
+ARG BUILD_VERSION
+ARG BUILD_TIME
+ARG CI_COMMIT_SHA
+LABEL build_name="hami-webui-be" build_version="${BUILD_VERSION}" build_time="${BUILD_TIME}" commit_id="${CI_COMMIT_SHA}"
 
 COPY --from=builder /src/build/ /apps/

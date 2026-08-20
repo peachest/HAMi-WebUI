@@ -44,7 +44,7 @@ server_image_build:
     - docker buildx create --name $builder --driver-opt image=harbor.transwarp.io/gold/moby/buildkit:buildx-stable-1 --platform "linux/amd64,linux/arm64/v8" --use --driver docker-container --config /buildkitd.toml
     - docker buildx inspect --bootstrap $builder
     - docker buildx ls
-    - make buildx-image
+    - make buildx-image CI_COMMIT_SHA=${CI_COMMIT_SHA} CI_COMMIT_REF_NAME=${CI_COMMIT_REF_NAME}
     - killdocker
   tags:
     - k8s
