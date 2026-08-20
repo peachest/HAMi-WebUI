@@ -131,13 +131,13 @@ func TestFetchDevices_WithJSONAnnotation(t *testing.T) {
 func TestInitRegisters(t *testing.T) {
 	if got, ok := util.InRequestDevices["PPU"]; !ok {
 		t.Error("util.InRequestDevices[\"PPU\"] not registered")
-	} else if got != PPUAllocatedAnno {
-		t.Errorf("util.InRequestDevices[\"PPU\"] = %q, want %q", got, PPUAllocatedAnno)
+	} else if got != PPURequestAnno {
+		t.Errorf("util.InRequestDevices[\"PPU\"] = %q, want %q", got, PPURequestAnno)
 	}
 
 	if got, ok := util.SupportDevices["PPU"]; !ok {
 		t.Error("util.SupportDevices[\"PPU\"] not registered")
-	} else if got != PPURequestAnno {
-		t.Errorf("util.SupportDevices[\"PPU\"] = %q, want %q", got, PPURequestAnno)
+	} else if got != PPUAllocatedAnno {
+		t.Errorf("util.SupportDevices[\"PPU\"] = %q, want %q", got, PPUAllocatedAnno)
 	}
 }
