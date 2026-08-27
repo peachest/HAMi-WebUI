@@ -499,3 +499,33 @@ func TestPPU_DecodePodDevices(t *testing.T) {
 		})
 	}
 }
+
+// TestUnMarshalNodeDevices_PPU_JSON_NoAlias_DefaultsToID is the regression test
+// for the PPU "8 records instead of 2" bug. The PPU device-plugin registers
+// devices via a JSON annotation whose keys are [id,count,devmem,devcore,type,
+// mode,migProfiles,health] — there is NO alias field. Because DeviceInfo has
+// no json tags, UnMarshalNodeDevices used to leave AliasId="", which defeated
+// the device-container matching guard in GenerateContainerMetrics (every
+// device matched every container device → one record per node card).
+// After the fix, AliasId must default to ID, mirroring DecodeNodeDevices.
+func TestUnMarshalNodeDevices_PPU_JSON_NoAlias_DefaultsToID(t *testing.T) {
+	// Real-shape PPU register annotation (8 cards, no alias field), redacted.
+	anno := `[{"id":"GPU-ppu-0000","count":7,"devmem":49152,"devcore":100,"type":"PPU-ZW610E","mode":"mig","health":true},` +
+		`{"id":"GPU-ppu-0001","index":1,"count":7,"devmem":49152,"devcore":100,"type":"PPU-ZW610E","mode":"mig","health":true},` +
+		`{"id":"GPU-ppu-0002","index":2,"count":7,"devmem":49152,"devcore":100,"type":"PPU-ZW610E","mode":"mig","health":true}]`
+	devs, err := UnMarshalNodeDevices(anno)
+	if err != nil {
+		t.Fatalf("UnMarshalNodeDevices failed: %v", err)
+	}
+	if len(devs) != 3 {
+		t.Fatalf("want 3 devices, got %d", len(devs))
+	}
+	for i, d := range devs {
+		if d.AliasId == "" {
+			t.Errorf("device[%d] AliasId empty: id=%s (this causes every device to match every container → bogus extra metric records)", i, d.ID)
+		}
+		if d.AliasId != d.ID {
+			t.Errorf("device[%d] AliasId=%q want %q (ID)", i, d.AliasId, d.ID)
+		}
+	}
+}

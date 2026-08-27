@@ -394,5 +394,20 @@ func DecodePodDevices(pod *corev1.Pod, log *log.Helper) (PodDevices, error) {
 func UnMarshalNodeDevices(str string) ([]*DeviceInfo, error) {
 	var dlist []*DeviceInfo
 	err := json.Unmarshal([]byte(str), &dlist)
-	return dlist, err
+	if err != nil {
+		return dlist, err
+	}
+	// JSON register annotations (e.g. PPU) carry no AliasId field, so the
+	// struct field stays empty. An empty AliasId defeats the device-container
+	// matching guard in GenerateContainerMetrics (every device then matches
+	// every container device). Default AliasId to ID, mirroring the
+	// comma-format DecodeNodeDevices path (AliasId: items[0]) and the explicit
+	// override Ascend performs after unmarshal. Callers that need a different
+	// alias (e.g. Ascend910C merge) still override afterwards.
+	for _, d := range dlist {
+		if d.AliasId == "" {
+			d.AliasId = d.ID
+		}
+	}
+	return dlist, nil
 }

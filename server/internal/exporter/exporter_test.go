@@ -1130,6 +1130,94 @@ func TestPPU_GenerateContainerMetrics_CoreMemory(t *testing.T) {
 	}
 }
 
+// TestPPU_8Cards_2Allocated_RecordsCount verifies the PPU container-metric
+// record count after the AliasId fix. A node has 8 PPU cards; a service is
+// allocated 2 of them. Only the 2 allocated cards may emit
+// hami_container_vcore_allocated records.
+//
+// Root cause (fixed in UnMarshalNodeDevices): the PPU device-plugin registers
+// via a JSON annotation with no alias field, so AliasId used to be empty,
+// which made the device-container matching guard in GenerateContainerMetrics
+// short-circuit — every node card then matched every container device and
+// emitted a record (8 records instead of 2).
+func TestPPU_8Cards_2Allocated_RecordsCount(t *testing.T) {
+	uuids := make([]string, 8)
+	for i := 0; i < 8; i++ {
+		uuids[i] = fmt.Sprintf("GPU-ppu-card-%d-aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee", i)
+	}
+	// Post-fix, PPU devices always carry AliasId == ID (see UnMarshalNodeDevices).
+	var devices []*biz.DeviceInfo
+	for i := 0; i < 8; i++ {
+		devices = append(devices, &biz.DeviceInfo{
+			Id: uuids[i], AliasId: uuids[i], Count: 1, Devmem: 98304, Devcore: 100,
+			Type: "PPU", NodeName: "ppu-node-1", Provider: "PPU", Health: true,
+		})
+	}
+	containers := []*biz.Container{
+		{
+			Name: "inference", PodName: "ppu-pod", Namespace: "default", PodUID: "pod-ppu-1", NodeName: "ppu-node-1",
+			ContainerDevices: biz.ContainerDevices{
+				{UUID: uuids[2], Type: "PPU", Usedmem: 32768, Usedcores: 50},
+				{UUID: uuids[5], Type: "PPU", Usedmem: 32768, Usedcores: 50},
+			},
+		},
+	}
+
+	now := model.Now()
+	mockResponses := map[string]string{}
+	for _, u := range []string{uuids[2], uuids[5]} {
+		mockResponses[fmt.Sprintf("DCGM_FI_DEV_GPU_UTIL{UUID=\"%s\"}", u)] = buildPromVectorResponse([]model.Sample{{Value: 12, Timestamp: now}})
+		mockResponses[fmt.Sprintf("avg(DCGM_FI_DEV_FB_USED{UUID=\"%s\"})", u)] = buildPromVectorResponse([]model.Sample{{Value: 2, Timestamp: now}})
+	}
+	mux := http.NewServeMux()
+	mux.Handle("/api/v1/query", &mockPromHandler{responses: mockResponses})
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	gen := newTestMetricsGenerator(t, server.URL, containers, devices)
+	resetTestMetrics()
+	if err := gen.GenerateContainerMetrics(context.Background()); err != nil {
+		t.Fatalf("GenerateContainerMetrics failed: %v", err)
+	}
+
+	registry := prometheus.DefaultRegisterer.(*prometheus.Registry)
+	families, err := registry.Gather()
+	if err != nil {
+		t.Fatalf("Gather failed: %v", err)
+	}
+	type rec struct {
+		deviceUUID string
+		value      float64
+	}
+	var records []rec
+	for _, f := range families {
+		if f.GetName() != "hami_container_vcore_allocated" {
+			continue
+		}
+		for _, m := range f.GetMetric() {
+			devUUID := ""
+			for _, l := range m.GetLabel() {
+				if l.GetName() == "deviceuuid" {
+					devUUID = l.GetValue()
+				}
+			}
+			records = append(records, rec{devUUID, m.GetGauge().GetValue()})
+		}
+	}
+	t.Logf("hami_container_vcore_allocated records=%d", len(records))
+	for _, r := range records {
+		t.Logf("  deviceuuid=%s value=%v", r.deviceUUID, r.value)
+	}
+	if len(records) != 2 {
+		t.Errorf("hami_container_vcore_allocated: want 2 records (only allocated cards), got %d", len(records))
+	}
+	for _, r := range records {
+		if r.value != 50 {
+			t.Errorf("deviceuuid=%s: want value 50, got %v", r.deviceUUID, r.value)
+		}
+	}
+}
+
 // Verify queryDeviceAdditional uses DCGM_FI_DEV_POWER_USAGE and extracts DeviceNo from device label
 func TestPPU_QueryDeviceAdditional(t *testing.T) {
 	uuid := "GPU-driver-test-uuid"
